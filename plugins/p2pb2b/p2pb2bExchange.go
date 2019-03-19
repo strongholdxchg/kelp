@@ -7,173 +7,140 @@ import (
 	"github.com/stellar/kelp/model"
 	"log"
 	"math"
+	"strconv"
 )
 
 // ensure that pbExchange conforms to the Exchange interface
 var _ api.Exchange = &pbExchange{}
 var ErrorNotSupported = errors.New("FUNCTION_NOT_SUPPORTED")
 
-// const precisionBalances = 10
+const precisionBalances = 8
 
 // pbExchange is the implementation for the p2pb2b Exchange
 type pbExchange struct {
-	// assetConverter           *model.AssetConverter
-	// assetConverterOpenOrders *model.AssetConverter // pb uses different symbols when fetching open orders!
-	// apis                     []*pbapi.pbApi
-	// apiNextIndex             uint8
-	// delimiter    string
-	// withdrawKeys asset2Address2Key
-	// isSimulated  bool // will simulate add and cancel orders if this is true
+	assetConverter *model.AssetConverter
+	apis           []*P2BApi
+	apiNextIndex   uint8
+	delimiter      string
+	isSimulated    bool // will simulate add and cancel orders if this is true
 }
 
-//type asset2Address2Key map[model.Asset]map[string]string
-//
-//func (m asset2Address2Key) getKey(asset model.Asset, address string) (string, error) {
-//	address2Key, ok := m[asset]
-//	if !ok {
-//		return "", fmt.Errorf("asset (%v) is not registered in asset2Address2Key: %v", asset, m)
-//	}
-//
-//	key, ok := address2Key[address]
-//	if !ok {
-//		return "", fmt.Errorf("address is not registered in asset2Address2Key: %v (asset = %v)", address, asset)
-//	}
-//
-//	return key, nil
-//}
-//
 // makepbExchange is a factory method to make the pb exchange
-func makepbExchange(apiKeys []api.ExchangeAPIKey, isSimulated bool) (api.Exchange, error) {
+func MakeP2PB2BExchange(apiKeys []api.ExchangeAPIKey, isSimulated bool) (api.Exchange, error) {
 	if len(apiKeys) == 0 || len(apiKeys) > math.MaxUint8 {
 		return nil, fmt.Errorf("invalid number of apiKeys: %d", len(apiKeys))
 	}
 
-	pbAPIs := []*pbapi.pbApi{}
+	pbAPIs := make([]*P2BApi, 0)
 	for _, apiKey := range apiKeys {
-		pbAPIClient := pbapi.New(apiKey.Key, apiKey.Secret)
+		pbAPIClient := &P2BApi{key: apiKey.Key, secret: apiKey.Secret}
 		pbAPIs = append(pbAPIs, pbAPIClient)
 	}
 
 	return &pbExchange{
-		assetConverter:           model.pbAssetConverter,
-		assetConverterOpenOrders: model.pbAssetConverterOpenOrders,
-		apis:                     pbAPIs,
-		apiNextIndex:             0,
-		delimiter:                "",
-		withdrawKeys:             asset2Address2Key{},
-		isSimulated:              isSimulated,
+		assetConverter: model.P2PB2BAssetConverter,
+		apis:           pbAPIs,
+		apiNextIndex:   0,
+		delimiter:      "_",
+		isSimulated:    isSimulated,
 	}, nil
 }
 
 // nextAPI rotates the API key being used so we can overcome rate limit issues
-func (k *pbExchange) nextAPI() *pbapi.pbApi {
-	log.Printf("returning pb API key at index %d", k.apiNextIndex)
-	api := k.apis[k.apiNextIndex]
+func (p2b *pbExchange) nextAPI() *P2BApi {
+	log.Printf("returning pb API key at index %d", p2b.apiNextIndex)
+	api_ := p2b.apis[p2b.apiNextIndex]
 	// rotate key for the next call
-	k.apiNextIndex = (k.apiNextIndex + 1) % uint8(len(k.apis))
-	return api
+	p2b.apiNextIndex = (p2b.apiNextIndex + 1) % uint8(len(p2b.apis))
+	return api_
+}
+
+func (p2b *pbExchange) floatFromString(val string) (float64, error) {
+	return strconv.ParseFloat(val, 64)
 }
 
 // AddOrder impl.
-func (b2b *pbExchange) AddOrder(order *model.Order) (*model.TransactionID, error) {
-	//pairStr, e := order.Pair.ToString(k.assetConverter, k.delimiter)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//if k.isSimulated {
-	//	log.Printf("not adding order to pb in simulation mode, order=%s\n", *order)
-	//	return model.MakeTransactionID("simulated"), nil
-	//}
-	//
-	//orderConstraints := k.GetOrderConstraints(order.Pair)
-	//if order.Price.Precision() > orderConstraints.PricePrecision {
-	//	return nil, fmt.Errorf("pb price precision can be a maximum of %d, got %d, value = %.12f", orderConstraints.PricePrecision, order.Price.Precision(), order.Price.AsFloat())
-	//}
-	//if order.Volume.Precision() > orderConstraints.VolumePrecision {
-	//	return nil, fmt.Errorf("pb volume precision can be a maximum of %d, got %d, value = %.12f", orderConstraints.VolumePrecision, order.Volume.Precision(), order.Volume.AsFloat())
-	//}
-	//
-	//args := map[string]string{
-	//	"price": order.Price.AsString(),
-	//}
-	//resp, e := k.nextAPI().AddOrder(
-	//	pairStr,
-	//	order.OrderAction.String(),
-	//	order.OrderType.String(),
-	//	order.Volume.AsString(),
-	//	args,
-	//)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//// expected case for production orders
-	//if len(resp.TransactionIds) == 1 {
-	//	return model.MakeTransactionID(resp.TransactionIds[0]), nil
-	//}
-	//
-	//if len(resp.TransactionIds) > 1 {
-	//	return nil, fmt.Errorf("there was more than 1 transctionId: %s", resp.TransactionIds)
-	//}
-	//
-	return nil, fmt.Errorf("no transactionIds returned from order creation")
+func (p2b *pbExchange) AddOrder(order *model.Order) (*model.TransactionID, error) {
+	market, err := order.Pair.ToString(p2b.assetConverter, p2b.delimiter)
+	if err != nil {
+		return nil, err
+	}
+
+	if p2b.isSimulated {
+		log.Printf("not adding order to pb in simulation mode, order=%s\n", *order)
+		return model.MakeTransactionID("simulated"), nil
+	}
+
+	orderConstraints := p2b.GetOrderConstraints(order.Pair)
+	if order.Price.Precision() > orderConstraints.PricePrecision {
+		return nil, fmt.Errorf("pb price precision can be a maximum of %d, got %d, value = %.12f", orderConstraints.PricePrecision, order.Price.Precision(), order.Price.AsFloat())
+	}
+	if order.Volume.Precision() > orderConstraints.VolumePrecision {
+		return nil, fmt.Errorf("pb volume precision can be a maximum of %d, got %d, value = %.12f", orderConstraints.VolumePrecision, order.Volume.Precision(), order.Volume.AsFloat())
+	}
+
+	resp, err := p2b.nextAPI().createOrder(market, order.Volume.AsString(), order.Price.AsString(), bool(order.OrderAction))
+	if err != nil {
+		return nil, err
+	}
+
+	return model.MakeTransactionID(fmt.Sprintf("%d", resp.Id)), nil
 }
 
 // CancelOrder impl.
-func (k *pbExchange) CancelOrder(txID *model.TransactionID, pair model.TradingPair) (model.CancelOrderResult, error) {
-	//if k.isSimulated {
-	//	return model.CancelResultCancelSuccessful, nil
-	//}
-	//
-	//// we don't actually use the pair for pb
-	//resp, e := k.nextAPI().CancelOrder(txID.String())
-	//if e != nil {
-	//	return model.CancelResultFailed, e
-	//}
-	//
-	//if resp.Count > 1 {
-	//	log.Printf("warning: count from a cancelled order is greater than 1: %d\n", resp.Count)
-	//}
-	//
-	//// TODO 2 - need to figure out whether count = 0 could also mean that it is pending cancellation
-	//if resp.Count == 0 {
-	//	return model.CancelResultFailed, nil
-	//}
-	//// resp.Count == 1 here
-	//
-	//if resp.Pending {
-	//	return model.CancelResultPending, nil
-	//}
+func (p2b *pbExchange) CancelOrder(txID_ *model.TransactionID, pair model.TradingPair) (model.CancelOrderResult, error) {
+	if p2b.isSimulated {
+		return model.CancelResultCancelSuccessful, nil
+	}
+
+	market, err := pair.ToString(p2b.assetConverter, p2b.delimiter)
+	if err != nil {
+		return model.CancelResultFailed, err
+	}
+
+	txID, err := strconv.ParseUint(txID_.String(), 10, 64)
+	if err != nil {
+		return model.CancelResultFailed, err
+	}
+
+	_, err = p2b.nextAPI().cancelOrder(market, txID)
+	if err != nil {
+		return model.CancelResultFailed, err
+	}
+
 	return model.CancelResultCancelSuccessful, nil
 }
 
 // GetAccountBalances impl.
-func (k *pbExchange) GetAccountBalances(assetList []model.Asset) (map[model.Asset]model.Number, error) {
-	//balanceResponse, e := k.nextAPI().Balance()
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//m := map[model.Asset]model.Number{}
-	//for _, a := range assetList {
-	//	pbAssetString, e := k.assetConverter.ToString(a)
-	//	if e != nil {
-	//		// discard partially built map for now
-	//		return nil, e
-	//	}
-	//	bal := getFieldValue(*balanceResponse, pbAssetString)
-	//	m[a] = *model.NumberFromFloat(bal, precisionBalances)
-	//}
-	//return m, nil
-	return nil, nil
-}
+func (p2b *pbExchange) GetAccountBalances(assetList []model.Asset) (map[model.Asset]model.Number, error) {
+	balanceResponse, err := p2b.nextAPI().getAccountBalanaces()
+	if err != nil {
+		return nil, err
+	}
 
-//func getFieldValue(object pbapi.BalanceResponse, fieldName string) float64 {
-//	r := reflect.ValueOf(object)
-//	f := reflect.Indirect(r).FieldByName(fieldName)
-//	return f.Interface().(float64)
-//}
+	m := map[model.Asset]model.Number{}
+	for _, a := range assetList {
+		pbAssetString, err := p2b.assetConverter.ToString(a)
+		if err != nil {
+			return nil, err
+		}
+		balItem := balanceResponse[pbAssetString]
+		if balItem == nil {
+			continue // ignore this asset
+		}
+		available, err := p2b.floatFromString(balItem.Available)
+		if err != nil {
+			return nil, err
+		}
+
+		freeze, err := p2b.floatFromString(balItem.Freeze)
+		if err != nil {
+			return nil, err
+		}
+		m[a] = *model.NumberFromFloat(available+freeze, precisionBalances)
+	}
+	return m, nil
+}
 
 // GetOrderConstraints impl
 func (k *pbExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderConstraints {
@@ -186,135 +153,127 @@ func (k *pbExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderCo
 }
 
 // GetAssetConverter impl.
-func (k *pbExchange) GetAssetConverter() *model.AssetConverter {
-	// return k.assetConverter
-	return nil
+func (p2b *pbExchange) GetAssetConverter() *model.AssetConverter {
+	return p2b.assetConverter
 }
 
 // GetOpenOrders impl.
-func (k *pbExchange) GetOpenOrders(pairs []*model.TradingPair) (map[model.TradingPair][]model.OpenOrder, error) {
-	//openOrdersResponse, e := k.nextAPI().OpenOrders(map[string]string{})
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//// convert to a map so we can easily search for the existence of a trading pair
-	//// pb uses different symbols when fetching open orders!
-	//pairsMap, e := model.TradingPairs2Strings2(k.assetConverterOpenOrders, "", pairs)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//m := map[model.TradingPair][]model.OpenOrder{}
-	//for ID, o := range openOrdersResponse.Open {
-	//	// pb uses different symbols when fetching open orders!
-	//	pair, e := model.TradingPairFromString(3, k.assetConverterOpenOrders, o.Description.AssetPair)
-	//	if e != nil {
-	//		return nil, e
-	//	}
-	//
-	//	if _, ok := pairsMap[*pair]; !ok {
-	//		// skip open orders for pairs that were not requested
-	//		continue
-	//	}
-	//
-	//	if _, ok := m[*pair]; !ok {
-	//		m[*pair] = []model.OpenOrder{}
-	//	}
-	//	if _, ok := m[model.TradingPair{Base: pair.Quote, Quote: pair.Base}]; ok {
-	//		return nil, fmt.Errorf("open orders are listed with repeated base/quote pairs for %s", *pair)
-	//	}
-	//
-	//	orderConstraints := k.GetOrderConstraints(pair)
-	//	m[*pair] = append(m[*pair], model.OpenOrder{
-	//		Order: model.Order{
-	//			Pair:        pair,
-	//			OrderAction: model.OrderActionFromString(o.Description.Type),
-	//			OrderType:   model.OrderTypeFromString(o.Description.OrderType),
-	//			Price:       model.MustNumberFromString(o.Description.PrimaryPrice, orderConstraints.PricePrecision),
-	//			Volume:      model.MustNumberFromString(o.Volume, orderConstraints.VolumePrecision),
-	//			Timestamp:   model.MakeTimestamp(int64(o.OpenTime)),
-	//		},
-	//		ID:             ID,
-	//		StartTime:      model.MakeTimestamp(int64(o.StartTime)),
-	//		ExpireTime:     model.MakeTimestamp(int64(o.ExpireTime)),
-	//		VolumeExecuted: model.NumberFromFloat(o.VolumeExecuted, orderConstraints.VolumePrecision),
-	//	})
-	//}
-	//return m, nil
-	return nil, nil
+func (p2b *pbExchange) GetOpenOrders(pairs []*model.TradingPair) (map[model.TradingPair][]model.OpenOrder, error) {
+	orders := make(map[model.TradingPair][]model.OpenOrder)
+	for _, p := range pairs {
+		ordersPair, err := p2b.getOpenOrders(p)
+		if err != nil {
+			return nil, err
+		}
+		orders[*p] = ordersPair
+	}
+	return orders, nil
+}
+
+func (p2b *pbExchange) getOpenOrders(pair *model.TradingPair) ([]model.OpenOrder, error) {
+	market, err := pair.ToString(p2b.assetConverter, p2b.delimiter)
+	if err != nil {
+		return nil, err
+	}
+
+	orders_, err := p2b.nextAPI().getOpenOrders(market)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]model.OpenOrder, 0)
+	if orders_ == nil {
+		return orders, nil // return empty list
+	}
+
+	for _, o := range *orders_ {
+		o := o
+		orderConstraints := p2b.GetOrderConstraints(pair)
+		order := model.OpenOrder{
+			Order: model.Order{
+				Pair:        pair,
+				OrderAction: model.OrderActionFromString(o.Side),
+				OrderType:   model.OrderTypeFromString(o.Type),
+				Price:       model.MustNumberFromString(o.Price, orderConstraints.PricePrecision),
+				Volume:      model.MustNumberFromString(o.Amount, orderConstraints.VolumePrecision),
+				Timestamp:   model.MakeTimestamp(int64(o.Timestamp)),
+			},
+			ID:             strconv.FormatUint(o.Id, 10),
+			StartTime:      model.MakeTimestamp(int64(o.Timestamp)),
+			ExpireTime:     model.MakeTimestamp(int64(o.Timestamp) + 2500000),
+			VolumeExecuted: model.NumberFromFloat(0.0, orderConstraints.VolumePrecision),
+			// @todo hack 0.0 rather than real figure - is this important for our needs?
+		}
+		orders = append(orders, order)
+	}
+	return orders, nil
 }
 
 // GetOrderBook impl.
-func (k *pbExchange) GetOrderBook(pair *model.TradingPair, maxCount int32) (*model.OrderBook, error) {
-	//pairStr, e := pair.ToString(k.assetConverter, k.delimiter)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//pbob, e := k.nextAPI().Depth(pairStr, int(maxCount))
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//asks := k.readOrders(pbob.Asks, pair, model.OrderActionSell)
-	//bids := k.readOrders(pbob.Bids, pair, model.OrderActionBuy)
-	//ob := model.MakeOrderBook(pair, asks, bids)
-	//return ob, nil
-	return nil, nil
+func (p2b *pbExchange) GetOrderBook(pair *model.TradingPair, maxCount int32) (*model.OrderBook, error) {
+	market, err := pair.ToString(p2b.assetConverter, p2b.delimiter)
+	if err != nil {
+		return nil, err
+	}
+
+	sells_, err := p2b.nextAPI().getOrderBook(market, false, maxCount)
+	if err != nil {
+		return nil, err
+	}
+	sells := p2b.readOrders(sells_, pair, model.OrderActionSell)
+
+	buys_, err := p2b.nextAPI().getOrderBook(market, true, maxCount)
+	if err != nil {
+		return nil, err
+	}
+	buys := p2b.readOrders(buys_, pair, model.OrderActionBuy)
+
+	ob := model.MakeOrderBook(pair, sells, buys)
+	return ob, nil
 }
 
-//func (k *pbExchange) readOrders(obi []pbapi.OrderBookItem, pair *model.TradingPair, orderAction model.OrderAction) []model.Order {
-//	orderConstraints := k.GetOrderConstraints(pair)
-//	orders := []model.Order{}
-//	for _, item := range obi {
-//		orders = append(orders, model.Order{
-//			Pair:        pair,
-//			OrderAction: orderAction,
-//			OrderType:   model.OrderTypeLimit,
-//			Price:       model.NumberFromFloat(item.Price, orderConstraints.PricePrecision),
-//			Volume:      model.NumberFromFloat(item.Amount, orderConstraints.VolumePrecision),
-//			Timestamp:   model.MakeTimestamp(item.Ts),
-//		})
-//	}
-//	return orders
-//}
+func (p2b *pbExchange) readOrders(orders_ *ExchangeOrders, pair *model.TradingPair, orderAction model.OrderAction) []model.Order {
+	orderConstraints := p2b.GetOrderConstraints(pair)
+	orders := []model.Order{}
+	if orders == nil {
+		return orders
+	}
+
+	for _, item := range *orders_ {
+		orders = append(orders, model.Order{
+			Pair:        pair,
+			OrderAction: orderAction,
+			OrderType:   model.OrderTypeLimit,
+			Price:       model.MustNumberFromString(item.Price, orderConstraints.PricePrecision),
+			Volume:      model.MustNumberFromString(item.Amount, orderConstraints.VolumePrecision),
+			Timestamp:   model.MakeTimestamp(int64(item.Timestamp)),
+		})
+	}
+	return orders
+}
 
 // GetTickerPrice impl.
-func (k *pbExchange) GetTickerPrice(pairs []model.TradingPair) (map[model.TradingPair]api.Ticker, error) {
-	//pairsMap, e := model.TradingPairs2Strings(k.assetConverter, k.delimiter, pairs)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//resp, e := k.nextAPI().Ticker(values(pairsMap)...)
-	//if e != nil {
-	//	return nil, e
-	//}
-	//
-	//priceResult := map[model.TradingPair]api.Ticker{}
-	//for _, p := range pairs {
-	//	orderConstraints := k.GetOrderConstraints(&p)
-	//	pairTickerInfo := resp.GetPairTickerInfo(pairsMap[p])
-	//	priceResult[p] = api.Ticker{
-	//		AskPrice: model.MustNumberFromString(pairTickerInfo.Ask[0], orderConstraints.PricePrecision),
-	//		BidPrice: model.MustNumberFromString(pairTickerInfo.Bid[0], orderConstraints.PricePrecision),
-	//	}
-	//}
-	//
-	//return priceResult, nil
-	return nil, nil
-}
+func (p2b *pbExchange) GetTickerPrice(pairs []model.TradingPair) (map[model.TradingPair]api.Ticker, error) {
+	priceResult := map[model.TradingPair]api.Ticker{}
+	for _, p := range pairs {
+		orderConstraints := p2b.GetOrderConstraints(&p)
+		market, err := p.ToString(p2b.assetConverter, p2b.delimiter)
+		if err != nil {
+			return nil, err
+		}
+		ticker, err := p2b.nextAPI().getTicker(market)
+		if err != nil {
+			return nil, err
+		}
 
-//// values gives you the values of a map
-//// TODO 2 - move to autogenerated generic function
-//func values(m map[model.TradingPair]string) []string {
-//	values := []string{}
-//	for _, v := range m {
-//		values = append(values, v)
-//	}
-//	return values
-//}
+		priceResult[p] = api.Ticker{
+			AskPrice: model.MustNumberFromString(ticker.Ask, orderConstraints.PricePrecision),
+			BidPrice: model.MustNumberFromString(ticker.Bid, orderConstraints.PricePrecision),
+		}
+	}
+
+	return priceResult, nil
+}
 
 // GetTradeHistory impl.
 func (k *pbExchange) GetTradeHistory(pair model.TradingPair, maybeCursorStart interface{}, maybeCursorEnd interface{}) (*api.TradeHistoryResult, error) {
@@ -360,4 +319,8 @@ var pbPrecisionMatrix = map[model.TradingPair]model.OrderConstraints{
 	*model.MakeTradingPair(model.SHX, model.USD): *model.MakeOrderConstraints(8, 8, 50.0),
 	*model.MakeTradingPair(model.SHX, model.BTC): *model.MakeOrderConstraints(8, 8, 50.0),
 	*model.MakeTradingPair(model.SHX, model.ETH): *model.MakeOrderConstraints(8, 8, 50.0),
+
+	//for tests
+	*model.MakeTradingPair(model.ETH, model.BTC): *model.MakeOrderConstraints(5, 8, 0.02),
+	*model.MakeTradingPair(model.XLM, model.BTC): *model.MakeOrderConstraints(8, 8, 30.0),
 }

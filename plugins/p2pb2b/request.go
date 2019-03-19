@@ -9,10 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+)
+
+const (
+	p2bBaseURL   = "https://p2pb2b.io"
+	p2bApiPrefix = "/api/v1"
 )
 
 // Common structs
@@ -34,7 +40,7 @@ type P2BResponse struct {
 type P2BLimitOffset struct {
 	Offset int `json:"offset,omitempty"`
 	Limit  int `json:"limit,omitempty"`
-	Total  int `json:"limit,omitempty"`
+	Total  int `json:"total,omitempty"`
 }
 
 // Account balance structs
@@ -57,8 +63,8 @@ type GetAccountBalanceItem struct {
 // Order structs
 type GetOrdersResult struct {
 	P2BLimitOffset
-	Orders *Orders `json:"orders"`
-	Result *Orders `json:"result"`
+	Orders  *ExchangeOrders `json:"orders"`
+	Records *ExchangeOrders `json:"records"`
 }
 
 type GetOrdersRequest struct {
@@ -69,11 +75,11 @@ type GetOrdersRequest struct {
 
 type GetOrdersResponse struct {
 	P2BResponse
-	Result GetOrdersResult `json:"result"`
+	Result *GetOrdersResult `json:"result"`
 }
 
-type Order struct {
-	Id        uint64  `json:"id" binding:"required"`
+type ExchangeOrder struct {
+	Id        uint64  `json:"orderId" binding:"required"`
 	Left      string  `json:"left"`
 	Market    string  `json:"market"`
 	Amount    string  `json:"amount"`
@@ -88,9 +94,9 @@ type Order struct {
 	DealMoney string  `json:"dealMoney"`
 }
 
-type Orders []*Order
+type ExchangeOrders []*ExchangeOrder
 
-type ActionOrderResult Order
+type ActionOrderResult ExchangeOrder
 
 type ActionOrderResponse struct {
 	P2BResponse
@@ -114,25 +120,18 @@ type CancelOrderRequest struct {
 }
 
 // TickerPrice structs
-type TickerPricesResult map[string]*TickerPriceItem
-
-type TickerPricesResponse struct {
-	P2BResponse
-	Result TickerPricesResult `json:"result"`
-}
-
-type TickerPriceItem struct {
-	At     uint64             `json:"at" binding:"required"`
-	Ticker *TickerPriceTicker `json:"ticker" binding:"required"`
-}
-
-type TickerPriceTicker struct {
+type TickerPriceResult struct {
 	Bid  string `json:"bid" binding:"required"`
 	Ask  string `json:"ask" binding:"required"`
 	Low  string `json:"low" binding:"required"`
 	High string `json:"high" binding:"required"`
 	Last string `json:"last" binding:"required"`
 	Vol  string `json:"vol" binding:"required"`
+}
+
+type TickerPriceResponse struct {
+	P2BResponse
+	Result *TickerPriceResult `json:"result"`
 }
 
 //
@@ -142,7 +141,7 @@ func (p2b *P2BApi) unsuccessful() error {
 
 func (p2b *P2BApi) getAccountBalanaces() (GetAccountBalancesResult, error) {
 	p2bRequest := P2BRequest{
-		Request: "/api/v1/account/balances",
+		Request: fmt.Sprintf("%s/account/balances", p2bApiPrefix),
 	}
 	request := GetAccountBalancesRequest{
 		P2BRequest: &p2bRequest,
@@ -159,13 +158,13 @@ func (p2b *P2BApi) getAccountBalanaces() (GetAccountBalancesResult, error) {
 	return response.Result, nil
 }
 
-func (p2b *P2BApi) getOpenOrders(market string) (*Orders, error) {
+func (p2b *P2BApi) getOpenOrders(market string) (*ExchangeOrders, error) {
 	p2bRequest := P2BRequest{
-		Request: "/api/v1/orders",
+		Request: fmt.Sprintf("%s/orders", p2bApiPrefix),
 	}
 	offset := 0
 	limit := 100
-	orders := make(Orders, 0)
+	orders := make(ExchangeOrders, 0)
 	for {
 		request := GetOrdersRequest{
 			P2BRequest: &p2bRequest,
@@ -184,7 +183,10 @@ func (p2b *P2BApi) getOpenOrders(market string) (*Orders, error) {
 		if !response.Success {
 			return nil, p2b.unsuccessful()
 		}
-		orders = append(orders, *response.Result.Result...)
+		fmt.Println(*response.Result, response.Result.Records)
+		if response.Result.Records != nil && response.Result.Total > 0 {
+			orders = append(orders, *response.Result.Records...)
+		}
 		if response.Result.Total < limit {
 			return &orders, nil
 		}
@@ -192,15 +194,13 @@ func (p2b *P2BApi) getOpenOrders(market string) (*Orders, error) {
 	}
 }
 
-func (p2b *P2BApi) createOrder(market, amount, price string, buy bool) (*ActionOrderResult, error) {
+func (p2b *P2BApi) createOrder(market, amount, price string, sell bool) (*ActionOrderResult, error) {
 	p2bRequest := P2BRequest{
-		Request: "/api/v1/order/new",
+		Request: fmt.Sprintf("%s/order/new", p2bApiPrefix),
 	}
 
-	var side string
-	if buy {
-		side = "buy"
-	} else {
+	side := "buy"
+	if sell {
 		side = "sell"
 	}
 
@@ -225,7 +225,7 @@ func (p2b *P2BApi) createOrder(market, amount, price string, buy bool) (*ActionO
 
 func (p2b *P2BApi) cancelOrder(market string, id uint64) (*ActionOrderResult, error) {
 	p2bRequest := P2BRequest{
-		Request: "/api/v1/order/cancel",
+		Request: fmt.Sprintf("%s/order/cancel", p2bApiPrefix),
 	}
 
 	request := CancelOrderRequest{
@@ -245,12 +245,13 @@ func (p2b *P2BApi) cancelOrder(market string, id uint64) (*ActionOrderResult, er
 	return response.Result, nil
 }
 
-func (p2b *P2BApi) getTicker(market string) (TickerPricesResult, error) {
-	var response TickerPricesResponse
+func (p2b *P2BApi) getTicker(market string) (*TickerPriceResult, error) {
+	var response TickerPriceResponse
 	paras := map[string]string{
 		"market": market,
 	}
-	err := p2b.get("/api/v1/public/ticker", &response, paras)
+	request := fmt.Sprintf("%s/public/ticker", p2bApiPrefix)
+	err := p2b.get(request, &response, paras)
 	if err != nil {
 		return nil, err
 	}
@@ -260,19 +261,20 @@ func (p2b *P2BApi) getTicker(market string) (TickerPricesResult, error) {
 	return response.Result, nil
 }
 
-func (p2b *P2BApi) getOrderBook(market string, buy bool) (*Orders, error) {
+func (p2b *P2BApi) getOrderBook(market string, sell bool, maxCount int32) (*ExchangeOrders, error) {
 	offset := 0
 	limit := 100
-	orders := make(Orders, 0)
+	orders := make(ExchangeOrders, 0)
 
-	var side string
-	if buy {
-		side = "buy"
-	} else {
+	side := "buy"
+	if sell {
 		side = "sell"
 	}
 
 	for {
+		if offset >= int(maxCount) {
+			break
+		}
 		var response GetOrdersResponse
 		paras := map[string]string{
 			"market": market,
@@ -280,21 +282,24 @@ func (p2b *P2BApi) getOrderBook(market string, buy bool) (*Orders, error) {
 			"limit":  strconv.FormatUint(uint64(limit), 10),
 			"offset": strconv.FormatUint(uint64(offset), 10),
 		}
-		err := p2b.get("/api/v1/public/book", &response, paras)
+		request := fmt.Sprintf("%s/public/book", p2bApiPrefix)
+		err := p2b.get(request, &response, paras)
 		if err != nil {
 			return nil, err
 		}
 		if !response.Success {
 			return nil, p2b.unsuccessful()
 		}
-		if response.Result.Orders != nil {
+		if response.Result.Orders != nil && response.Result.Total > 0 {
 			orders = append(orders, *response.Result.Orders...)
 		}
 		if response.Result.Total < limit {
-			return &orders, nil
+			break
 		}
 		offset += limit
 	}
+	result := orders[0:maxCount]
+	return &result, nil
 }
 
 func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error {
@@ -307,7 +312,9 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 	h := hmac.New(sha512.New, []byte(p2b.secret))
 	h.Write([]byte(hex_))
 	sig := hex.EncodeToString(h.Sum(nil))
-	url := fmt.Sprintf("https://p2pb2b.io%s", p2bR.Request)
+	url := fmt.Sprintf("%s%s", p2bBaseURL, p2bR.Request)
+
+	fmt.Println(data, hex_, sig)
 
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))
 	if err != nil {
@@ -322,7 +329,7 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 }
 
 func (p2b *P2BApi) get(request_ string, response interface{}, paras map[string]string) error {
-	url := fmt.Sprintf("https://p2pb2b.io%s", request_)
+	url := fmt.Sprintf("%s%s", p2bBaseURL, request_)
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -338,6 +345,8 @@ func (p2b *P2BApi) get(request_ string, response interface{}, paras map[string]s
 }
 
 func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
+	fmt.Println(request.URL.String())
+
 	client := &http.Client{}
 	httpResponse, err := client.Do(request)
 	if err != nil {
@@ -346,9 +355,13 @@ func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300 {
-		decoder := json.NewDecoder(httpResponse.Body)
-		err = decoder.Decode(&response)
-		return err
+		fmt.Println("response Status Code:", httpResponse.StatusCode)
+		body, _ := ioutil.ReadAll(httpResponse.Body)
+		bodyString := string(body)
+		fmt.Println("response Body:", bodyString)
+		bodyReader := strings.NewReader(bodyString)
+		decoder := json.NewDecoder(bodyReader)
+		return decoder.Decode(&response)
 	}
 
 	return errors.New(fmt.Sprintf("BAD_STATUS_CODE: %d", httpResponse.StatusCode))
@@ -359,14 +372,15 @@ func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 //		key:    "b97cd1a2d30a83ba8417994117c5c78d", //"95733fc9a4971707fba0a8c215f57740"
 //		secret: "f8b1e34e77c3d048efe6b2a1117f1646", //"6f5cb056eb57f269dc6e15caf1dc6c08"
 //	}
-//	//res, err := api.createOrder("XLM_BTC", "10", "0.00003", false)
-//	//res, err := api.cancelOrder("XLM_BTC", 10523428)
-//	//res, err := api.getAccountBalanaces()
+//	res, err := api.getAccountBalanaces()
+//	res, err := api.getTicker("ETH_BTC")
+//	res, err := api.createOrder("XLM_BTC", "10", "0.00003", true)
 //	res, err := api.getOpenOrders("XLM_BTC")
-//	//res, err := api.getTicker("ETH_BTC")
-//	//res, err := api.getOrderBook("XLM_BTC", true)
+//	res, err := api.getOrderBook("XLM_BTC", true)
+//	res, err := api.cancelOrder("XLM_BTC", 10802264)
+//
 //	fmt.Println(res, err)
-//	//for _, o := range *res {
-//	//	fmt.Println(*o)
-//	//}
+//	for _, o := range *res {
+//		fmt.Println(*o)
+//	}
 //}

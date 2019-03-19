@@ -8,6 +8,7 @@ import (
 	"github.com/stellar/go/support/config"
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
+	"github.com/stellar/kelp/plugins/p2pb2b"
 	"github.com/stellar/kelp/support/utils"
 )
 
@@ -222,6 +223,14 @@ var exchanges = map[string]ExchangeContainer{
 				exchangeFactoryData.apiKeys,
 				exchangeFactoryData.simMode,
 			)
+		},
+	},
+	"p2pb2b": ExchangeContainer{
+		SortOrder:    5,
+		Description:  "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
+		TradeEnabled: true,
+		makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
+			return p2pb2b.MakeP2PB2BExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
 		},
 	},
 }

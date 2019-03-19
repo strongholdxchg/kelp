@@ -26,7 +26,7 @@ const (
 	FEE  Asset = "FEE"
 	QTUM Asset = "QTUM"
 	USDT Asset = "USDT"
-	USDC Asset = "USDC"	
+	USDC Asset = "USDC"
 	DAO  Asset = "DAO"
 	ETC  Asset = "ETC"
 	ICN  Asset = "ICN"
@@ -43,6 +43,7 @@ const (
 	JPY  Asset = "JPY"
 	KRW  Asset = "KRW"
 	OMG  Asset = "OMG"
+	SHX  Asset = "SHX"
 )
 
 // AssetConverter converts to and from the asset type, it is specific to an exchange
@@ -107,7 +108,7 @@ var Display = makeAssetConverter(map[Asset]string{
 	FEE:  string(FEE),
 	QTUM: string(QTUM),
 	USDT: string(USDT),
-	USDC: string(USDC),	
+	USDC: string(USDC),
 	DAO:  string(DAO),
 	ETC:  string(ETC),
 	ICN:  string(ICN),
@@ -126,8 +127,17 @@ var Display = makeAssetConverter(map[Asset]string{
 	OMG:  string(OMG),
 })
 
-// CcxtAssetConverter is the asset converter for the CCXT exchange interface
+// P2PB2BAssetConverter is the ABRIDGED asset converter for the P2PB2B exchange interface
 var CcxtAssetConverter = Display
+
+// P2PB2BAssetConverter is the asset converter for the P2PB2B exchange interface
+var P2PB2BAssetConverter = makeAssetConverter(map[Asset]string{
+	XLM: string(XLM),
+	BTC: string(BTC),
+	USD: string(USD),
+	SHX: string(SHX),
+	ETH: string(ETH),
+})
 
 // KrakenAssetConverter is the asset converter for the Kraken exchange
 var KrakenAssetConverter = makeAssetConverter(map[Asset]string{
