@@ -113,15 +113,20 @@ func (p2b *pbExchange) CancelOrder(txID_ *model.TransactionID, pair model.Tradin
 }
 
 // GetAccountBalances impl.
-func (p2b *pbExchange) GetAccountBalances(assetList []model.Asset) (map[model.Asset]model.Number, error) {
+func (p2b *pbExchange) GetAccountBalances(assetList []interface{}) (map[interface{}]model.Number, error) {
 	balanceResponse, err := p2b.nextAPI().getAccountBalanaces()
 	if err != nil {
 		return nil, err
 	}
 
-	m := map[model.Asset]model.Number{}
+	m := map[interface{}]model.Number{}
 	for _, a := range assetList {
-		pbAssetString, err := p2b.assetConverter.ToString(a)
+		ast, ok := a.(model.Asset)
+		if !ok {
+			return nil, fmt.Errorf("invalid type of asset passed in, only model.Asset accepted")
+		}
+
+		pbAssetString, err := p2b.assetConverter.ToString(ast)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +143,7 @@ func (p2b *pbExchange) GetAccountBalances(assetList []model.Asset) (map[model.As
 		if err != nil {
 			return nil, err
 		}
-		m[a] = *model.NumberFromFloat(available+freeze, precisionBalances)
+		m[ast] = *model.NumberFromFloat(available+freeze, precisionBalances)
 	}
 	return m, nil
 }
