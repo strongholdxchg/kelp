@@ -42,7 +42,7 @@ func TestMakeValid(t *testing.T) {
 		return
 	}
 
-	_, e := MakeInitializedCcxtExchange("http://localhost:3000", "kraken", api.ExchangeAPIKey{})
+	_, e := MakeInitializedCcxtExchange("kraken", api.ExchangeAPIKey{})
 	if e != nil {
 		assert.Fail(t, fmt.Sprintf("unexpected error: %s", e))
 		return
@@ -55,7 +55,7 @@ func TestMakeInvalid(t *testing.T) {
 		return
 	}
 
-	_, e := MakeInitializedCcxtExchange("http://localhost:3000", "missing-exchange", api.ExchangeAPIKey{})
+	_, e := MakeInitializedCcxtExchange("missing-exchange", api.ExchangeAPIKey{})
 	if e == nil {
 		assert.Fail(t, "expected an error when trying to make and initialize an exchange that is missing: 'missing-exchange'")
 		return
@@ -73,7 +73,7 @@ func TestFetchTickers(t *testing.T) {
 		return
 	}
 
-	c, e := MakeInitializedCcxtExchange("http://localhost:3000", "binance", api.ExchangeAPIKey{})
+	c, e := MakeInitializedCcxtExchange("binance", api.ExchangeAPIKey{})
 	if e != nil {
 		assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 		return
@@ -94,7 +94,7 @@ func TestFetchTickersWithMissingSymbol(t *testing.T) {
 		return
 	}
 
-	c, e := MakeInitializedCcxtExchange("http://localhost:3000", "binance", api.ExchangeAPIKey{})
+	c, e := MakeInitializedCcxtExchange("binance", api.ExchangeAPIKey{})
 	if e != nil {
 		assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 		return
@@ -183,7 +183,7 @@ func runTestFetchOrderBook(k orderbookTest, t *testing.T) {
 		return
 	}
 
-	c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, api.ExchangeAPIKey{})
+	c, e := MakeInitializedCcxtExchange(k.exchangeName, api.ExchangeAPIKey{})
 	if e != nil {
 		assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 		return
@@ -256,7 +256,7 @@ func TestFetchTrades(t *testing.T) {
 	} {
 		tradingPairString := strings.Replace(k.tradingPair, "/", "_", -1)
 		t.Run(fmt.Sprintf("%s-%s", k.exchangeName, tradingPairString), func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, api.ExchangeAPIKey{})
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, api.ExchangeAPIKey{})
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
@@ -278,42 +278,46 @@ func TestFetchMyTrades(t *testing.T) {
 		return
 	}
 
-	krakenFields := []string{"amount", "cost", "datetime", "id", "price", "side", "symbol", "timestamp"}
-	binanceFields := []string{"amount", "cost", "datetime", "id", "price", "side", "symbol", "timestamp"}
-	bittrexFields := []string{"amount", "datetime", "id", "price", "side", "symbol", "timestamp", "type"}
+	krakenFields := []string{"amount", "cost", "datetime", "id", "price", "side", "symbol", "timestamp", "fee"}
+	binanceFields := []string{"amount", "cost", "datetime", "id", "price", "side", "symbol", "timestamp", "fee"}
+	bittrexFields := []string{"amount", "datetime", "id", "price", "side", "symbol", "timestamp", "type", "fee"}
 
 	for _, k := range []struct {
-		exchangeName   string
-		tradingPair    string
-		expectedFields []string
-		apiKey         api.ExchangeAPIKey
+		exchangeName     string
+		tradingPair      string
+		maybeCursorStart interface{}
+		expectedFields   []string
+		apiKey           api.ExchangeAPIKey
 	}{
 		{
-			exchangeName:   "kraken",
-			tradingPair:    "BTC/USD",
-			expectedFields: krakenFields,
-			apiKey:         api.ExchangeAPIKey{},
+			exchangeName:     "kraken",
+			tradingPair:      "BTC/USD",
+			maybeCursorStart: nil,
+			expectedFields:   krakenFields,
+			apiKey:           api.ExchangeAPIKey{},
 		}, {
-			exchangeName:   "binance",
-			tradingPair:    "XLM/USDT",
-			expectedFields: binanceFields,
-			apiKey:         api.ExchangeAPIKey{},
+			exchangeName:     "binance",
+			tradingPair:      "XLM/USDT",
+			maybeCursorStart: nil,
+			expectedFields:   binanceFields,
+			apiKey:           api.ExchangeAPIKey{},
 		}, {
-			exchangeName:   "bittrex",
-			tradingPair:    "XLM/BTC",
-			expectedFields: bittrexFields,
-			apiKey:         api.ExchangeAPIKey{},
+			exchangeName:     "bittrex",
+			tradingPair:      "XLM/BTC",
+			maybeCursorStart: nil,
+			expectedFields:   bittrexFields,
+			apiKey:           api.ExchangeAPIKey{},
 		},
 	} {
 		tradingPairString := strings.Replace(k.tradingPair, "/", "_", -1)
 		t.Run(fmt.Sprintf("%s-%s", k.exchangeName, tradingPairString), func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, k.apiKey)
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, k.apiKey)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
 			}
 
-			trades, e := c.FetchMyTrades(k.tradingPair)
+			trades, e := c.FetchMyTrades(k.tradingPair, 50, k.maybeCursorStart)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when fetching my trades: %s", e))
 				return
@@ -335,7 +339,9 @@ func validateTrades(trades []CcxtTrade, expectedFields []string, tradingPair str
 		return ok
 	}
 
-	assert.True(t, len(trades) > 0)
+	if !assert.True(t, len(trades) > 0) {
+		return
+	}
 	for _, trade := range trades {
 		if supportsField("amount") && !assert.True(t, trade.Amount > 0) {
 			return
@@ -361,6 +367,9 @@ func validateTrades(trades []CcxtTrade, expectedFields []string, tradingPair str
 		if supportsField("timestamp") && !assert.True(t, trade.Timestamp > 0) {
 			return
 		}
+		if supportsField("fee") && !assert.NotNil(t, trade.Fee) && !assert.True(t, trade.Fee.Cost > 0) {
+			return
+		}
 	}
 }
 
@@ -379,7 +388,7 @@ func TestFetchBalance(t *testing.T) {
 		},
 	} {
 		t.Run(k.exchangeName, func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, k.apiKey)
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, k.apiKey)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
@@ -427,7 +436,7 @@ func TestOpenOrders(t *testing.T) {
 		},
 	} {
 		t.Run(k.exchangeName, func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, k.apiKey)
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, k.apiKey)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
@@ -510,7 +519,7 @@ func TestCreateLimitOrder(t *testing.T) {
 		},
 	} {
 		t.Run(k.exchangeName, func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, k.apiKey)
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, k.apiKey)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
@@ -595,7 +604,7 @@ func TestCancelOrder(t *testing.T) {
 		},
 	} {
 		t.Run(k.exchangeName, func(t *testing.T) {
-			c, e := MakeInitializedCcxtExchange("http://localhost:3000", k.exchangeName, k.apiKey)
+			c, e := MakeInitializedCcxtExchange(k.exchangeName, k.apiKey)
 			if e != nil {
 				assert.Fail(t, fmt.Sprintf("error when making ccxt exchange: %s", e))
 				return
@@ -606,43 +615,8 @@ func TestCancelOrder(t *testing.T) {
 				return
 			}
 
-			if !assert.NotNil(t, openOrder) {
-				return
-			}
-
-			if !assert.Equal(t, k.tradingPair.String(), openOrder.Symbol) {
-				return
-			}
-
-			if !assert.NotEqual(t, "", openOrder.ID) {
-				return
-			}
-
-			if !assert.True(t, openOrder.Amount > 0, fmt.Sprintf("%f", openOrder.Amount)) {
-				return
-			}
-
-			if !assert.True(t, openOrder.Price > 0, fmt.Sprintf("%f", openOrder.Price)) {
-				return
-			}
-
-			if !assert.Equal(t, "limit", openOrder.Type) {
-				return
-			}
-
-			if !assert.True(t, openOrder.Side == "buy" || openOrder.Side == "sell", openOrder.Side) {
-				return
-			}
-
-			if !assert.Equal(t, 0.0, openOrder.Cost) {
-				return
-			}
-
-			if !assert.Equal(t, 0.0, openOrder.Filled) {
-				return
-			}
-
-			if !assert.Equal(t, "canceled", openOrder.Status) {
+			isValid := validateCanceledOrder(t, openOrder, k.tradingPair.String())
+			if !isValid {
 				return
 			}
 
@@ -651,4 +625,48 @@ func TestCancelOrder(t *testing.T) {
 			assert.Fail(t, "force fail")
 		})
 	}
+}
+
+func validateCanceledOrder(t *testing.T, openOrder *CcxtOpenOrder, tradingPair string) bool {
+	if !assert.NotNil(t, openOrder) {
+		return false
+	}
+
+	if !assert.Equal(t, tradingPair, openOrder.Symbol) {
+		return false
+	}
+
+	if !assert.NotEqual(t, "", openOrder.ID) {
+		return false
+	}
+
+	if !assert.True(t, openOrder.Amount > 0, fmt.Sprintf("%f", openOrder.Amount)) {
+		return false
+	}
+
+	if !assert.True(t, openOrder.Price > 0, fmt.Sprintf("%f", openOrder.Price)) {
+		return false
+	}
+
+	if !assert.Equal(t, "limit", openOrder.Type) {
+		return false
+	}
+
+	if !assert.True(t, openOrder.Side == "buy" || openOrder.Side == "sell", openOrder.Side) {
+		return false
+	}
+
+	if !assert.Equal(t, 0.0, openOrder.Cost) {
+		return false
+	}
+
+	if !assert.Equal(t, 0.0, openOrder.Filled) {
+		return false
+	}
+
+	if !assert.Equal(t, "canceled", openOrder.Status) {
+		return false
+	}
+
+	return true
 }

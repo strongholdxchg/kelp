@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+
+	"github.com/stellar/go/clients/horizon"
+	"github.com/stellar/kelp/support/utils"
 )
 
 // Asset is typed and enlists the allowed assets that are understood by the bot
@@ -26,7 +29,7 @@ const (
 	FEE  Asset = "FEE"
 	QTUM Asset = "QTUM"
 	USDT Asset = "USDT"
-	USDC Asset = "USDC"	
+	USDC Asset = "USDC"
 	DAO  Asset = "DAO"
 	ETC  Asset = "ETC"
 	ICN  Asset = "ICN"
@@ -107,7 +110,7 @@ var Display = makeAssetConverter(map[Asset]string{
 	FEE:  string(FEE),
 	QTUM: string(QTUM),
 	USDT: string(USDT),
-	USDC: string(USDC),	
+	USDC: string(USDC),
 	DAO:  string(DAO),
 	ETC:  string(ETC),
 	ICN:  string(ICN),
@@ -168,3 +171,11 @@ var KrakenAssetConverterOpenOrders = makeAssetConverter(map[Asset]string{
 	BTC: "XBT",
 	USD: "USD",
 })
+
+// FromHorizonAsset is a factory method
+func FromHorizonAsset(hAsset horizon.Asset) Asset {
+	if hAsset.Type == utils.Native {
+		return XLM
+	}
+	return Asset(hAsset.Code)
+}
