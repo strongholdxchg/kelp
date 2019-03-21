@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"strconv"
+	"time"
 )
 
 // ensure that pbExchange conforms to the Exchange interface
@@ -279,6 +280,13 @@ func (p2b *pbExchange) GetTickerPrice(pairs []model.TradingPair) (map[model.Trad
 func (k *pbExchange) GetTradeHistory(pair model.TradingPair, maybeCursorStart interface{}, maybeCursorEnd interface{}) (*api.TradeHistoryResult, error) {
 	log.Println("pbExchange does not support GetTradeHistory function")
 	return nil, ErrorNotSupported
+}
+
+// GetLatestTradeCursor impl.
+func (k *pbExchange) GetLatestTradeCursor() (interface{}, error) {
+	timeNowSecs := time.Now().Unix()
+	latestTradeCursor := fmt.Sprintf("%d", timeNowSecs)
+	return latestTradeCursor, nil
 }
 
 // GetTrades impl.
