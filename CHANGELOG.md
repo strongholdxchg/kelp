@@ -8,13 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Enable trading on centralized exchanges ([505162a86777f99fba26bc953b3125aba90e2f7e](https://github.com/stellar/kelp/commit/505162a86777f99fba26bc953b3125aba90e2f7e)) ([a9ab0346ddd3500395018d1dbcf426200b5fb112](https://github.com/stellar/kelp/commit/a9ab0346ddd3500395018d1dbcf426200b5fb112)) ([3a1b4c467495a5ebb8219c554dd8a5e4d63723e5](https://github.com/stellar/kelp/commit/3a1b4c467495a5ebb8219c554dd8a5e4d63723e5))
+- support for OrderConstraintsFilter to preempt invalid orders ([b9ba73071d97e9e0e8c6f61989ff9375be4dbbeb](https://github.com/stellar/kelp/commit/b9ba73071d97e9e0e8c6f61989ff9375be4dbbeb))
+- Expand CCXT exchanges enabled on Kelp, including trading-enabled exchanges ([0631bb1ec8892e331907614cca94d66aed3ee026](https://github.com/stellar/kelp/commit/0631bb1ec8892e331907614cca94d66aed3ee026)) ([40c56416e07a5f974815ee0ca11992c8825e57c2](https://github.com/stellar/kelp/commit/40c56416e07a5f974815ee0ca11992c8825e57c2))
+
 ### Changed
+
+- Use FeeStats() method from new horizonclient package in stellar/go repo; run `glide install` to update vendored dependencies, _do NOT run `glide up` since that will break the dependencies installed because of an issue with how glide works_ ([ce226cc20ce6a38fe56728c91432db9edd7cb272](https://github.com/stellar/kelp/commit/ce226cc20ce6a38fe56728c91432db9edd7cb272))
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+
+- Fixed Mirror Strategy not working without offsetTrades flag ([09f76e891967a146363ccbd8fe8ccf53656c270e](https://github.com/stellar/kelp/commit/09f76e891967a146363ccbd8fe8ccf53656c270e))
 
 ### Security
 
@@ -39,7 +47,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v1.3.0] - 2019-01-10
 
 ### Added
-- mirror strategy offsets trades onto the backing exchange, run `glide up` to udpate dependencies ([3a703a359db541b636cab38c3dd8a7fbe6df7193](https://github.com/stellar/kelp/commit/3a703a359db541b636cab38c3dd8a7fbe6df7193))
+- mirror strategy offsets trades onto the backing exchange, run `glide up` to update dependencies ([3a703a359db541b636cab38c3dd8a7fbe6df7193](https://github.com/stellar/kelp/commit/3a703a359db541b636cab38c3dd8a7fbe6df7193))
 - ccxt integration now supports trading APIs for all exchanges ([5cf0aedc67eff89a8f82082326f878844ac7b5d5](https://github.com/stellar/kelp/commit/5cf0aedc67eff89a8f82082326f878844ac7b5d5))
 - randomized delay via the MAX_TICK_DELAY_MILLIS ([4b74affb9933bf08a093ee66cea46c1b3fb87753](https://github.com/stellar/kelp/commit/4b74affb9933bf08a093ee66cea46c1b3fb87753))
 

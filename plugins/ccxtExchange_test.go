@@ -3,7 +3,9 @@ package plugins
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
@@ -13,7 +15,7 @@ import (
 var supportedExchanges = []string{"binance"}
 var emptyAPIKey = api.ExchangeAPIKey{}
 var supportedTradingExchanges = map[string]api.ExchangeAPIKey{
-	"binance": api.ExchangeAPIKey{},
+	"binance": {},
 }
 
 var testOrderConstraints = map[model.TradingPair]model.OrderConstraints{
@@ -28,7 +30,7 @@ func TestGetTickerPrice_Ccxt(t *testing.T) {
 
 	for _, exchangeName := range supportedExchanges {
 		t.Run(exchangeName, func(t *testing.T) {
-			testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
 			if !assert.NoError(t, e) {
 				return
 			}
@@ -55,7 +57,7 @@ func TestGetOrderBook_Ccxt(t *testing.T) {
 
 	for _, exchangeName := range supportedExchanges {
 		t.Run(exchangeName, func(t *testing.T) {
-			testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
 			if !assert.NoError(t, e) {
 				return
 			}
@@ -88,7 +90,7 @@ func TestGetTrades_Ccxt(t *testing.T) {
 
 	for _, exchangeName := range supportedExchanges {
 		t.Run(exchangeName, func(t *testing.T) {
-			testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{emptyAPIKey}, false)
 			if !assert.NoError(t, e) {
 				return
 			}
@@ -113,7 +115,7 @@ func TestGetTradeHistory_Ccxt(t *testing.T) {
 
 	for exchangeName, apiKey := range supportedTradingExchanges {
 		t.Run(exchangeName, func(t *testing.T) {
-			testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
 			if !assert.NoError(t, e) {
 				return
 			}
@@ -124,7 +126,11 @@ func TestGetTradeHistory_Ccxt(t *testing.T) {
 			if !assert.NoError(t, e) {
 				return
 			}
-			assert.Equal(t, nil, tradeHistoryResult.Cursor)
+			if len(tradeHistoryResult.Trades) > 0 {
+				assert.NotNil(t, tradeHistoryResult.Cursor)
+			} else {
+				assert.Nil(t, tradeHistoryResult.Cursor)
+			}
 
 			validateTrades(t, pair, tradeHistoryResult.Trades)
 		})
@@ -151,7 +157,7 @@ func validateTrades(t *testing.T, pair model.TradingPair, trades []model.Trade) 
 		if !assert.NotNil(t, trade.TransactionID) {
 			return
 		}
-		if !assert.Nil(t, trade.Fee) {
+		if !assert.NotNil(t, trade.Fee) {
 			return
 		}
 		if trade.OrderAction != model.OrderActionBuy && trade.OrderAction != model.OrderActionSell {
@@ -164,6 +170,41 @@ func validateTrades(t *testing.T, pair model.TradingPair, trades []model.Trade) 
 	}
 }
 
+func TestGetLatestTradeCursor_Ccxt(t *testing.T) {
+	for exchangeName, apiKey := range supportedTradingExchanges {
+		t.Run(exchangeName, func(t *testing.T) {
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+			if !assert.NoError(t, e) {
+				return
+			}
+
+			startIntervalMillis := time.Now().UnixNano() / int64(time.Millisecond)
+			cursor, e := testCcxtExchange.GetLatestTradeCursor()
+			if !assert.NoError(t, e) {
+				return
+			}
+			endIntervalMillis := time.Now().UnixNano() / int64(time.Millisecond)
+
+			if !assert.IsType(t, "string", cursor) {
+				return
+			}
+
+			cursorString := cursor.(string)
+			cursorInt, e := strconv.ParseInt(cursorString, 10, 64)
+			if !assert.NoError(t, e) {
+				return
+			}
+
+			if !assert.True(t, startIntervalMillis <= cursorInt, fmt.Sprintf("returned cursor (%d) should gte the start time of the function call in milliseconds (%d)", cursorInt, startIntervalMillis)) {
+				return
+			}
+			if !assert.True(t, endIntervalMillis >= cursorInt, fmt.Sprintf("returned cursor (%d) should lte the end time of the function call in milliseconds (%d)", cursorInt, endIntervalMillis)) {
+				return
+			}
+		})
+	}
+}
+
 func TestGetAccountBalances_Ccxt(t *testing.T) {
 	if testing.Short() {
 		return
@@ -171,12 +212,12 @@ func TestGetAccountBalances_Ccxt(t *testing.T) {
 
 	for exchangeName, apiKey := range supportedTradingExchanges {
 		t.Run(exchangeName, func(t *testing.T) {
-			testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+			testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
 			if !assert.NoError(t, e) {
 				return
 			}
 
-			balances, e := testCcxtExchange.GetAccountBalances([]model.Asset{
+			balances, e := testCcxtExchange.GetAccountBalances([]interface{}{
 				model.XLM,
 				model.BTC,
 				model.USD,
@@ -209,14 +250,14 @@ func TestGetOpenOrders_Ccxt(t *testing.T) {
 	}
 
 	tradingPairs := []model.TradingPair{
-		model.TradingPair{Base: model.XLM, Quote: model.BTC},
-		model.TradingPair{Base: model.XLM, Quote: model.USDT},
+		{Base: model.XLM, Quote: model.BTC},
+		{Base: model.XLM, Quote: model.USDT},
 	}
 
 	for exchangeName, apiKey := range supportedTradingExchanges {
 		for _, pair := range tradingPairs {
 			t.Run(exchangeName, func(t *testing.T) {
-				testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+				testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
 				if !assert.NoError(t, e) {
 					return
 				}
@@ -238,47 +279,8 @@ func TestGetOpenOrders_Ccxt(t *testing.T) {
 				for _, o := range openOrders {
 					log.Printf("open order: %+v\n", o)
 
-					if !assert.Equal(t, &pair, o.Order.Pair) {
-						return
-					}
-
-					// OrderAction has it's underlying type as a boolean so will always be valid
-
-					if !assert.Equal(t, model.OrderTypeLimit, o.Order.OrderType) {
-						return
-					}
-
-					if !assert.True(t, o.Order.Price.AsFloat() > 0, o.Order.Price.AsString()) {
-						return
-					}
-
-					if !assert.True(t, o.Order.Volume.AsFloat() > 0, o.Order.Volume.AsString()) {
-						return
-					}
-
-					if !assert.NotNil(t, o.Order.Timestamp) {
-						return
-					}
-
-					if !assert.True(t, len(o.ID) > 0, o.ID) {
-						return
-					}
-
-					if !assert.NotNil(t, o.StartTime) {
-						return
-					}
-
-					// ExpireTime is always nil for now
-					if !assert.Nil(t, o.ExpireTime) {
-						return
-					}
-
-					if !assert.NotNil(t, o.VolumeExecuted) {
-						return
-					}
-
-					// additional check to see if the two timestamps match
-					if !assert.Equal(t, o.Order.Timestamp, o.StartTime) {
+					isValid := validateOpenOrder(t, &pair, o)
+					if !isValid {
 						return
 					}
 				}
@@ -286,6 +288,54 @@ func TestGetOpenOrders_Ccxt(t *testing.T) {
 			})
 		}
 	}
+}
+
+func validateOpenOrder(t *testing.T, pair *model.TradingPair, o model.OpenOrder) bool {
+	if !assert.Equal(t, pair, o.Order.Pair) {
+		return false
+	}
+
+	// OrderAction has it's underlying type as a boolean so will always be valid
+
+	if !assert.Equal(t, model.OrderTypeLimit, o.Order.OrderType) {
+		return false
+	}
+
+	if !assert.True(t, o.Order.Price.AsFloat() > 0, o.Order.Price.AsString()) {
+		return false
+	}
+
+	if !assert.True(t, o.Order.Volume.AsFloat() > 0, o.Order.Volume.AsString()) {
+		return false
+	}
+
+	if !assert.NotNil(t, o.Order.Timestamp) {
+		return false
+	}
+
+	if !assert.True(t, len(o.ID) > 0, o.ID) {
+		return false
+	}
+
+	if !assert.NotNil(t, o.StartTime) {
+		return false
+	}
+
+	// ExpireTime is always nil for now
+	if !assert.Nil(t, o.ExpireTime) {
+		return false
+	}
+
+	if !assert.NotNil(t, o.VolumeExecuted) {
+		return false
+	}
+
+	// additional check to see if the two timestamps match
+	if !assert.Equal(t, o.Order.Timestamp, o.StartTime) {
+		return false
+	}
+
+	return true
 }
 
 func TestAddOrder_Ccxt(t *testing.T) {
@@ -322,7 +372,7 @@ func TestAddOrder_Ccxt(t *testing.T) {
 			},
 		} {
 			t.Run(exchangeName, func(t *testing.T) {
-				testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+				testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
 				if !assert.NoError(t, e) {
 					return
 				}
@@ -372,7 +422,7 @@ func TestCancelOrder_Ccxt(t *testing.T) {
 			},
 		} {
 			t.Run(exchangeName, func(t *testing.T) {
-				testCcxtExchange, e := makeCcxtExchange("http://localhost:3000", exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
+				testCcxtExchange, e := makeCcxtExchange(exchangeName, testOrderConstraints, []api.ExchangeAPIKey{apiKey}, false)
 				if !assert.NoError(t, e) {
 					return
 				}

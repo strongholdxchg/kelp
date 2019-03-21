@@ -3,6 +3,9 @@ package plugins
 import (
 	"fmt"
 	"log"
+	"sort"
+	"strconv"
+	"time"
 
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
@@ -26,7 +29,6 @@ type ccxtExchange struct {
 
 // makeCcxtExchange is a factory method to make an exchange using the CCXT interface
 func makeCcxtExchange(
-	ccxtBaseURL string,
 	exchangeName string,
 	orderConstraintOverrides map[model.TradingPair]model.OrderConstraints,
 	apiKeys []api.ExchangeAPIKey,
@@ -36,7 +38,11 @@ func makeCcxtExchange(
 		return nil, fmt.Errorf("need at least 1 ExchangeAPIKey, even if it is an empty key")
 	}
 
-	c, e := sdk.MakeInitializedCcxtExchange(ccxtBaseURL, exchangeName, apiKeys[0])
+	if len(apiKeys) != 1 {
+		return nil, fmt.Errorf("need exactly 1 ExchangeAPIKey")
+	}
+
+	c, e := sdk.MakeInitializedCcxtExchange(exchangeName, apiKeys[0])
 	if e != nil {
 		return nil, fmt.Errorf("error making a ccxt exchange: %s", e)
 	}
@@ -108,7 +114,7 @@ func (c ccxtExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderC
 	if ccxtMarket == nil {
 		panic(fmt.Errorf("CCXT does not have precision and limit data for the passed in market: %s", pairString))
 	}
-	oc := *model.MakeOrderConstraints(ccxtMarket.Precision.Price, ccxtMarket.Precision.Amount, ccxtMarket.Limits.Amount.Min)
+	oc := *model.MakeOrderConstraintsWithCost(ccxtMarket.Precision.Price, ccxtMarket.Precision.Amount, ccxtMarket.Limits.Amount.Min, ccxtMarket.Limits.Cost.Min)
 
 	// cache it before returning
 	c.orderConstraints[*pair] = oc
@@ -117,14 +123,21 @@ func (c ccxtExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderC
 }
 
 // GetAccountBalances impl
-func (c ccxtExchange) GetAccountBalances(assetList []model.Asset) (map[model.Asset]model.Number, error) {
+func (c ccxtExchange) GetAccountBalances(assetList []interface{}) (map[interface{}]model.Number, error) {
 	balanceResponse, e := c.api.FetchBalance()
 	if e != nil {
 		return nil, e
 	}
 
-	m := map[model.Asset]model.Number{}
-	for _, asset := range assetList {
+	m := map[interface{}]model.Number{}
+	for _, elem := range assetList {
+		var asset model.Asset
+		if v, ok := elem.(model.Asset); ok {
+			asset = v
+		} else {
+			return nil, fmt.Errorf("invalid type of asset passed in, only model.Asset accepted")
+		}
+
 		ccxtAssetString, e := c.GetAssetConverter().ToString(asset)
 		if e != nil {
 			return nil, e
@@ -189,26 +202,42 @@ func (c ccxtExchange) GetTradeHistory(pair model.TradingPair, maybeCursorStart i
 		return nil, fmt.Errorf("error converting pair to string: %s", e)
 	}
 
-	// TODO use cursor when fetching trade history
-	tradesRaw, e := c.api.FetchMyTrades(pairString)
+	// TODO fix limit logic to check result so we get full history instead of just 50 trades
+	const limit = 50
+	tradesRaw, e := c.api.FetchMyTrades(pairString, limit, maybeCursorStart)
 	if e != nil {
 		return nil, fmt.Errorf("error while fetching trade history for trading pair '%s': %s", pairString, e)
 	}
 
 	trades := []model.Trade{}
 	for _, raw := range tradesRaw {
-		t, e := c.readTrade(&pair, pairString, raw)
+		var t *model.Trade
+		t, e = c.readTrade(&pair, pairString, raw)
 		if e != nil {
 			return nil, fmt.Errorf("error while reading trade: %s", e)
 		}
 		trades = append(trades, *t)
 	}
 
-	// TODO implement cursor logic
+	sort.Sort(model.TradesByTsID(trades))
+	cursor := maybeCursorStart
+	if len(trades) > 0 {
+		lastCursor := trades[len(trades)-1].Order.Timestamp.AsInt64()
+		// add 1 to lastCursor so we don't repeat the same cursor on the next run
+		cursor = strconv.FormatInt(lastCursor+1, 10)
+	}
+
 	return &api.TradeHistoryResult{
-		Cursor: nil,
+		Cursor: cursor,
 		Trades: trades,
 	}, nil
+}
+
+// GetLatestTradeCursor impl.
+func (c ccxtExchange) GetLatestTradeCursor() (interface{}, error) {
+	timeNowMillis := time.Now().UnixNano() / int64(time.Millisecond)
+	latestTradeCursor := fmt.Sprintf("%d", timeNowMillis)
+	return latestTradeCursor, nil
 }
 
 // GetTrades impl
@@ -226,16 +255,24 @@ func (c ccxtExchange) GetTrades(pair *model.TradingPair, maybeCursor interface{}
 
 	trades := []model.Trade{}
 	for _, raw := range tradesRaw {
-		t, e := c.readTrade(pair, pairString, raw)
+		var t *model.Trade
+		t, e = c.readTrade(pair, pairString, raw)
 		if e != nil {
 			return nil, fmt.Errorf("error while reading trade: %s", e)
 		}
 		trades = append(trades, *t)
 	}
 
-	// TODO implement cursor logic
+	sort.Sort(model.TradesByTsID(trades))
+	cursor := maybeCursor
+	if len(trades) > 0 {
+		lastCursor := trades[len(trades)-1].Order.Timestamp.AsInt64()
+		// add 1 to lastCursor so we don't repeat the same cursor on the next run
+		cursor = strconv.FormatInt(lastCursor+1, 10)
+	}
+
 	return &api.TradesResult{
-		Cursor: nil,
+		Cursor: cursor,
 		Trades: trades,
 	}, nil
 }
@@ -247,6 +284,11 @@ func (c ccxtExchange) readTrade(pair *model.TradingPair, pairString string, rawT
 
 	pricePrecision := c.GetOrderConstraints(pair).PricePrecision
 	volumePrecision := c.GetOrderConstraints(pair).VolumePrecision
+	// use bigger precision for fee and cost since they are logically derived from amount and price
+	feecCostPrecision := pricePrecision
+	if volumePrecision > pricePrecision {
+		feecCostPrecision = volumePrecision
+	}
 
 	trade := model.Trade{
 		Order: model.Order{
@@ -257,7 +299,7 @@ func (c ccxtExchange) readTrade(pair *model.TradingPair, pairString string, rawT
 			Timestamp: model.MakeTimestamp(rawTrade.Timestamp),
 		},
 		TransactionID: model.MakeTransactionID(rawTrade.ID),
-		Fee:           nil,
+		Fee:           model.NumberFromFloat(rawTrade.Fee.Cost, feecCostPrecision),
 	}
 
 	if rawTrade.Side == "sell" {
@@ -269,12 +311,7 @@ func (c ccxtExchange) readTrade(pair *model.TradingPair, pairString string, rawT
 	}
 
 	if rawTrade.Cost != 0.0 {
-		// use bigger precision for cost since it's logically derived from amount and price
-		costPrecision := pricePrecision
-		if volumePrecision > pricePrecision {
-			costPrecision = volumePrecision
-		}
-		trade.Cost = model.NumberFromFloat(rawTrade.Cost, costPrecision)
+		trade.Cost = model.NumberFromFloat(rawTrade.Cost, feecCostPrecision)
 	}
 
 	return &trade, nil
@@ -302,7 +339,7 @@ func (c ccxtExchange) GetOpenOrders(pairs []*model.TradingPair) (map[model.Tradi
 	for asset, ccxtOrderList := range openOrdersMap {
 		pair, ok := string2Pair[asset]
 		if !ok {
-			return nil, fmt.Errorf("traing symbol %s returned from FetchOpenOrders was not in the original list of trading pairs: %v", asset, pairStrings)
+			return nil, fmt.Errorf("symbol %s returned from FetchOpenOrders was not in the original list of trading pairs: %v", asset, pairStrings)
 		}
 
 		openOrderList := []model.OpenOrder{}
