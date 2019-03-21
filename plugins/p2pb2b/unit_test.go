@@ -50,7 +50,7 @@ func TestP2B(t *testing.T) {
 }
 
 func getAccountBalances(t *testing.T, p2b *pbExchange) {
-	balances, err := p2b.GetAccountBalances([]model.Asset{"USD", "XLM", "BTC"})
+	balances, err := p2b.GetAccountBalances([]interface{}{model.Asset("USD"), model.Asset("XLM"), model.Asset("BTC")})
 	ok := err == nil && len(balances) == 3
 	if !ok {
 		t.Error(balances, err)
