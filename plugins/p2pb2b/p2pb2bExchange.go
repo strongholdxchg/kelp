@@ -149,7 +149,7 @@ func (p2b *pbExchange) GetAccountBalances(assetList []interface{}) (map[interfac
 }
 
 // GetOrderConstraints impl
-func (k *pbExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderConstraints {
+func (*pbExchange) GetOrderConstraints(pair *model.TradingPair) *model.OrderConstraints {
 	constraints, ok := pbPrecisionMatrix[*pair]
 	if !ok {
 		log.Printf("pbExchange could not find orderConstraints for trading pair %v, returning nil\n", pair)
@@ -282,20 +282,20 @@ func (p2b *pbExchange) GetTickerPrice(pairs []model.TradingPair) (map[model.Trad
 }
 
 // GetTradeHistory impl.
-func (k *pbExchange) GetTradeHistory(pair model.TradingPair, maybeCursorStart interface{}, maybeCursorEnd interface{}) (*api.TradeHistoryResult, error) {
+func (*pbExchange) GetTradeHistory(pair model.TradingPair, maybeCursorStart interface{}, maybeCursorEnd interface{}) (*api.TradeHistoryResult, error) {
 	log.Println("pbExchange does not support GetTradeHistory function")
 	return nil, ErrorNotSupported
 }
 
 // GetLatestTradeCursor impl.
-func (k *pbExchange) GetLatestTradeCursor() (interface{}, error) {
+func (*pbExchange) GetLatestTradeCursor() (interface{}, error) {
 	timeNowSecs := time.Now().Unix()
 	latestTradeCursor := fmt.Sprintf("%d", timeNowSecs)
 	return latestTradeCursor, nil
 }
 
 // GetTrades impl.
-func (k *pbExchange) GetTrades(pair *model.TradingPair, maybeCursor interface{}) (*api.TradesResult, error) {
+func (*pbExchange) GetTrades(pair *model.TradingPair, maybeCursor interface{}) (*api.TradesResult, error) {
 	log.Println("pbExchange does not support GetTrades function")
 	return nil, ErrorNotSupported
 }
