@@ -1,6 +1,7 @@
 package p2pb2b
 
 import (
+	"fmt"
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
 	"testing"
@@ -19,11 +20,12 @@ func TestP2B(t *testing.T) {
 	p2b, err := MakeP2PB2BExchange(
 		[]api.ExchangeAPIKey{
 			{Key: apiKey0, Secret: apiSecret0},
-			{Key: apiKey1, Secret: apiSecret1},
-			{Key: apiKey2, Secret: apiSecret2},
+			//{Key: apiKey1, Secret: apiSecret1},
+			//{Key: apiKey2, Secret: apiSecret2},
 		},
 		false)
 	if err != nil {
+		fmt.Println(err)
 		t.Fatal(err)
 	}
 

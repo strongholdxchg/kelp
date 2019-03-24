@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,9 +24,20 @@ const (
 )
 
 // Common structs
+type P2BProxy struct {
+	location, ovpn, port, url string
+}
+
+type P2BProxies struct {
+	proxy []*P2BProxy
+	index uint64
+	path  string
+}
+
 type P2BApi struct {
-	key    string
-	secret string
+	key     string
+	secret  string
+	proxies *P2BProxies
 }
 
 type P2BRequest struct {
@@ -132,6 +145,15 @@ type TickerPriceResult struct {
 type TickerPriceResponse struct {
 	P2BResponse
 	Result *TickerPriceResult `json:"result"`
+}
+
+func recycleDockerProxy(path string, proxy *P2BProxy) error {
+	script := filepath.Join(path, "openvpn.sh")
+	fmt.Println(script, proxy)
+
+	ovpn := filepath.Join(path, proxy.ovpn)
+	command := exec.Command("bash", script, proxy.location, ovpn, proxy.port)
+	return command.Run()
 }
 
 //
@@ -312,7 +334,11 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 	h := hmac.New(sha512.New, []byte(p2b.secret))
 	h.Write([]byte(hex_))
 	sig := hex.EncodeToString(h.Sum(nil))
-	url := fmt.Sprintf("%s%s", p2bBaseURL, p2bR.Request)
+	urlPrefix := p2bBaseURL
+	if p2b.proxies != nil {
+		urlPrefix = p2b.proxies.proxy[p2b.proxies.index].url
+	}
+	url := fmt.Sprintf("%s%s", urlPrefix, p2bR.Request)
 
 	fmt.Println(data, hex_, sig)
 
@@ -347,15 +373,35 @@ func (p2b *P2BApi) get(request_ string, response interface{}, paras map[string]s
 func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 	fmt.Println(request.URL.String())
 
+	err := p2b.submit_(request, response)
+	if err != nil && p2b.proxies != nil {
+		// try again
+		err = recycleDockerProxy(p2b.proxies.path, p2b.proxies.proxy[p2b.proxies.index])
+		if err == nil {
+			err = p2b.submit_(request, response)
+		}
+	}
+
+	if p2b.proxies != nil {
+		p2b.proxies.index = (p2b.proxies.index + 1) % uint64(len(p2b.proxies.proxy))
+	}
+	return err
+}
+
+func (p2b *P2BApi) submit_(request *http.Request, response interface{}) error {
+	if p2b.proxies != nil {
+		fmt.Printf("TRYING proxy: %s\n", p2b.proxies.proxy[p2b.proxies.index].location)
+	}
+
 	client := &http.Client{}
 	httpResponse, err := client.Do(request)
 	if err != nil {
 		return err
 	}
 	defer httpResponse.Body.Close()
+	fmt.Println("response Status Code:", httpResponse.StatusCode)
 
 	if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300 {
-		fmt.Println("response Status Code:", httpResponse.StatusCode)
 		body, _ := ioutil.ReadAll(httpResponse.Body)
 		bodyString := string(body)
 		fmt.Println("response Body:", bodyString)
@@ -363,7 +409,6 @@ func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 		decoder := json.NewDecoder(bodyReader)
 		return decoder.Decode(&response)
 	}
-
 	return errors.New(fmt.Sprintf("BAD_STATUS_CODE: %d", httpResponse.StatusCode))
 }
 
