@@ -8,7 +8,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -30,34 +29,24 @@ type pbExchange struct {
 
 // makepbExchange is a factory method to make the pb exchange
 func MakeP2PB2BExchange(apiKeys []api.ExchangeAPIKey, isSimulated bool) (api.Exchange, error) {
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	exPath := filepath.Dir(ex)
-	fmt.Println(exPath)
-
 	if len(apiKeys) == 0 || len(apiKeys) > math.MaxUint8 {
 		return nil, fmt.Errorf("invalid number of apiKeys: %d", len(apiKeys))
 	}
 
 	var proxies *P2BProxies
 	if path := os.Getenv("P2B_VPN_PATH"); path != "" {
-		fmt.Println(path)
-
 		// Hard-code a couple of proxies
-		proxy_uk := P2BProxy{location: "UK", ovpn: "expressvpn_uk.ovpn", port: "54321", url: "http://localhost:54321"}
+		proxy_uk := P2BProxy{location: "UK", ovpn: "expressvpn_uk.ovpn", port: "54321"}
 		err := recycleDockerProxy(path, &proxy_uk)
 		if err != nil {
 			return nil, err
 		}
 
-		proxy_us := P2BProxy{location: "US", ovpn: "expressvpn_us.ovpn", port: "54322", url: "http://localhost:54322"}
+		proxy_us := P2BProxy{location: "US", ovpn: "expressvpn_us.ovpn", port: "54322"}
 		err = recycleDockerProxy(path, &proxy_us)
 		if err != nil {
 			return nil, err
 		}
-
 		proxies = &P2BProxies{proxy: []*P2BProxy{&proxy_uk, &proxy_us}, path: path}
 	}
 

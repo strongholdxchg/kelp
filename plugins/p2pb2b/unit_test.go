@@ -8,20 +8,20 @@ import (
 )
 
 const (
-	apiKey0    = "b97cd1a2d30a83ba8417994117c5c78d"
-	apiSecret0 = "f8b1e34e77c3d048efe6b2a1117f1646"
-	apiKey1    = "c339c96cd4bdb3596d404cadde8746ba"
-	apiSecret1 = "988191e11242cafd7514fb2d84d01ceb"
-	apiKey2    = "95733fc9a4971707fba0a8c215f57740"
-	apiSecret2 = "6f5cb056eb57f269dc6e15caf1dc6c08"
+	apiKey0    = "c8683b2ad13dfaf897e1e6040609b136"
+	apiSecret0 = "106bbf7d997402d9437205b8fe8d28c8"
+	apiKey1    = "a3ae68fd100aa3acb6a82f99c3f5cb66"
+	apiSecret1 = "edadaa698c356a52a068acd99750e41b"
+	apiKey2    = "7e75d8c73490d2b3bd5c33daba525650"
+	apiSecret2 = "60bfbffed3feb561a7ff586efa982ca1"
 )
 
 func TestP2B(t *testing.T) {
 	p2b, err := MakeP2PB2BExchange(
 		[]api.ExchangeAPIKey{
 			{Key: apiKey0, Secret: apiSecret0},
-			//{Key: apiKey1, Secret: apiSecret1},
-			//{Key: apiKey2, Secret: apiSecret2},
+			{Key: apiKey1, Secret: apiSecret1},
+			{Key: apiKey2, Secret: apiSecret2},
 		},
 		false)
 	if err != nil {

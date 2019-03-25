@@ -25,7 +25,7 @@ const (
 
 // Common structs
 type P2BProxy struct {
-	location, ovpn, port, url string
+	location, ovpn, port string
 }
 
 type P2BProxies struct {
@@ -149,7 +149,7 @@ type TickerPriceResponse struct {
 
 func recycleDockerProxy(path string, proxy *P2BProxy) error {
 	script := filepath.Join(path, "openvpn.sh")
-	fmt.Println(script, proxy)
+	// fmt.Println(script, proxy)
 
 	ovpn := filepath.Join(path, proxy.ovpn)
 	command := exec.Command("bash", script, proxy.location, ovpn, proxy.port)
@@ -205,7 +205,7 @@ func (p2b *P2BApi) getOpenOrders(market string) (*ExchangeOrders, error) {
 		if !response.Success {
 			return nil, p2b.unsuccessful()
 		}
-		fmt.Println(*response.Result, response.Result.Records)
+		//fmt.Println(*response.Result, response.Result.Records)
 		if response.Result.Records != nil && response.Result.Total > 0 {
 			orders = append(orders, *response.Result.Records...)
 		}
@@ -336,11 +336,10 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 	sig := hex.EncodeToString(h.Sum(nil))
 	urlPrefix := p2bBaseURL
 	if p2b.proxies != nil {
-		urlPrefix = p2b.proxies.proxy[p2b.proxies.index].url
+		urlPrefix = fmt.Sprintf("http://localhost:%s", p2b.proxies.proxy[p2b.proxies.index].port)
 	}
 	url := fmt.Sprintf("%s%s", urlPrefix, p2bR.Request)
-
-	fmt.Println(data, hex_, sig)
+	//fmt.Println(data, hex_, sig)
 
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))
 	if err != nil {
@@ -355,7 +354,11 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 }
 
 func (p2b *P2BApi) get(request_ string, response interface{}, paras map[string]string) error {
-	url := fmt.Sprintf("%s%s", p2bBaseURL, request_)
+	urlPrefix := p2bBaseURL
+	if p2b.proxies != nil {
+		urlPrefix = fmt.Sprintf("http://localhost:%s", p2b.proxies.proxy[p2b.proxies.index].port)
+	}
+	url := fmt.Sprintf("%s%s", urlPrefix, request_)
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -404,7 +407,7 @@ func (p2b *P2BApi) submit_(request *http.Request, response interface{}) error {
 	if httpResponse.StatusCode >= 200 && httpResponse.StatusCode < 300 {
 		body, _ := ioutil.ReadAll(httpResponse.Body)
 		bodyString := string(body)
-		fmt.Println("response Body:", bodyString)
+		//fmt.Println("response Body:", bodyString)
 		bodyReader := strings.NewReader(bodyString)
 		decoder := json.NewDecoder(bodyReader)
 		return decoder.Decode(&response)
