@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	p2bBaseURL   = "https://p2pb2b.io"
-	p2bApiPrefix = "/api/v1"
+	p2bBaseURL    = "https://p2pb2b.io"
+	p2bApiPrefix  = "/api/v1"
+	proxyAttempts = 4
+	startSleep    = 10.0
+	multSleep     = 1.5
 )
 
 // Common structs
@@ -376,15 +379,27 @@ func (p2b *P2BApi) get(request_ string, response interface{}, paras map[string]s
 func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 	fmt.Println(request.URL.String())
 
-	err := p2b.submit_(request, response)
-	if err != nil && p2b.proxies != nil {
-		// try again
-		err = recycleDockerProxy(p2b.proxies.path, p2b.proxies.proxy[p2b.proxies.index])
-		if err == nil {
-			err = p2b.submit_(request, response)
-		}
+	attempts := 1
+	sleep := startSleep
+	if p2b.proxies != nil {
+		attempts = proxyAttempts
 	}
+	var err error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			err = recycleDockerProxy(p2b.proxies.path, p2b.proxies.proxy[p2b.proxies.index])
+			if err != nil {
+				return err
+			}
+		}
 
+		err = p2b.submit_(request, response)
+		if err == nil {
+			break // from for
+		}
+		time.Sleep(time.Duration(sleep) * time.Second)
+		sleep *= multSleep
+	}
 	if p2b.proxies != nil {
 		p2b.proxies.index = (p2b.proxies.index + 1) % uint64(len(p2b.proxies.proxy))
 	}
