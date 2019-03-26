@@ -22,7 +22,7 @@ const (
 	p2bBaseURL    = "https://p2pb2b.io"
 	p2bApiPrefix  = "/api/v1"
 	proxyAttempts = 4
-	startSleep    = 10.0
+	startSleep    = 5.0
 	multSleep     = 1.5
 )
 
@@ -156,6 +156,7 @@ func recycleDockerProxy(path string, proxy *P2BProxy) error {
 
 	ovpn := filepath.Join(path, proxy.ovpn)
 	command := exec.Command("bash", script, proxy.location, ovpn, proxy.port)
+	// fmt.Println(proxy.location, ovpn, proxy.port)
 	return command.Run()
 }
 
@@ -398,6 +399,7 @@ func (p2b *P2BApi) submit(request *http.Request, response interface{}) error {
 			break // from for
 		}
 		time.Sleep(time.Duration(sleep) * time.Second)
+		fmt.Print(".")
 		sleep *= multSleep
 	}
 	if p2b.proxies != nil {

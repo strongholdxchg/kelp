@@ -1,7 +1,6 @@
 package p2pb2b
 
 import (
-	"fmt"
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
 	"testing"
@@ -25,11 +24,10 @@ func TestP2B(t *testing.T) {
 		},
 		false)
 	if err != nil {
-		fmt.Println(err)
 		t.Fatal(err)
 	}
 
-	t.Run("getAccountBalancaes", func(t *testing.T) {
+	t.Run("getAccountBalances", func(t *testing.T) {
 		getAccountBalances(t, p2b.(*pbExchange))
 	})
 

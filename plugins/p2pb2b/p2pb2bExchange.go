@@ -47,7 +47,10 @@ func MakeP2PB2BExchange(apiKeys []api.ExchangeAPIKey, isSimulated bool) (api.Exc
 		if err != nil {
 			return nil, err
 		}
-		proxies = &P2BProxies{proxy: []*P2BProxy{&proxy_uk, &proxy_us}, path: path}
+		proxies = &P2BProxies{proxy: []*P2BProxy{
+			&proxy_uk,
+			&proxy_us,
+		}, path: path}
 	}
 
 	pbAPIs := make([]*P2BApi, 0)
