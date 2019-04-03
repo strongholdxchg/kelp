@@ -155,7 +155,7 @@ func recycleDockerProxy(path string, proxy *P2BProxy) error {
 	// fmt.Println(script, proxy)
 	ovpn := filepath.Join(path, proxy.ovpn)
 	command := exec.Command("bash", script, proxy.location, ovpn, proxy.port)
-	// fmt.Println(proxy.location, ovpn, proxy.port)
+	fmt.Println(proxy.location, ovpn, proxy.port)
 	return command.Run()
 }
 
@@ -342,7 +342,7 @@ func (p2b *P2BApi) post(p2bR *P2BRequest, request_, response interface{}) error 
 		urlPrefix = fmt.Sprintf("http://localhost:%s", p2b.proxies.proxy[p2b.proxies.index].port)
 	}
 	url := fmt.Sprintf("%s%s", urlPrefix, p2bR.Request)
-	//fmt.Println(data, hex_, sig)
+	fmt.Println(p2b.key, data, hex_, sig)
 
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))
 	if err != nil {

@@ -7,12 +7,16 @@ import (
 )
 
 const (
-	apiKey0    = "c8683b2ad13dfaf897e1e6040609b136"
-	apiSecret0 = "106bbf7d997402d9437205b8fe8d28c8"
-	apiKey1    = "a3ae68fd100aa3acb6a82f99c3f5cb66"
-	apiSecret1 = "edadaa698c356a52a068acd99750e41b"
-	apiKey2    = "7e75d8c73490d2b3bd5c33daba525650"
-	apiSecret2 = "60bfbffed3feb561a7ff586efa982ca1"
+	apiKey0    = "a9c0c7780b9fab752bb88d40b542f0a1"
+	apiSecret0 = "307be254ac040b0e7ccb045cb0fa2ccb"
+	apiKey1    = "7e1669810e9050d27d3acf43ba9d1a17"
+	apiSecret1 = "d092ec655aeb914fa48c65a2bc528feb"
+	apiKey2    = "b3ac87f45c1e7818ae47aa247905f6dd"
+	apiSecret2 = "61a9ea79d339c963af0dcdf35d1c2453"
+	apiKey3    = "24d59fa9866e79262637c6115052b84f"
+	apiSecret3 = "e8ea3a7120c11c2c3264c8069fcf5c88"
+	apiKey4    = "2a1b15f7cc4639cc743d275c0490e272"
+	apiSecret4 = "78ea30b852957e728f6e7a44555ef440"
 )
 
 func TestP2B(t *testing.T) {
@@ -22,6 +26,8 @@ func TestP2B(t *testing.T) {
 			{Key: apiKey0, Secret: apiSecret0},
 			{Key: apiKey1, Secret: apiSecret1},
 			{Key: apiKey2, Secret: apiSecret2},
+			{Key: apiKey3, Secret: apiSecret3},
+			{Key: apiKey4, Secret: apiSecret4},
 		},
 		false)
 	if err != nil {
