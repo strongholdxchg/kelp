@@ -16,6 +16,7 @@ const (
 )
 
 func TestP2B(t *testing.T) {
+	fmt.Println("tests run")
 	p2b, err := MakeP2PB2BExchange(
 		[]api.ExchangeAPIKey{
 			{Key: apiKey0, Secret: apiSecret0},
@@ -109,3 +110,4 @@ func cancelOpenOrder(t *testing.T, p2b *pbExchange) {
 		t.Error(result, err)
 	}
 }
+

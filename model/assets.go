@@ -181,6 +181,47 @@ var KrakenAssetConverterOpenOrders = makeAssetConverter(map[Asset]string{
 	BTC: "XBT",
 	USD: "USD",
 })
+// StrongholdAssetConverter is the asset converter for the Stronghold exchange
+var StrongholdAssetConverter = makeAssetConverter(map[Asset]string{
+	XLM:  "XLM",
+	BTC:  "BTC",
+	USD:  "USD",
+	ETH:  "ETH",
+	LTC:  "LTC",
+	REP:  "XREP",
+	ADA:  "ADA",
+	BCH:  "BCH",
+	DASH: "DASH",
+	EOS:  "EOS",
+	GNO:  "GNO",
+	FEE:  "KFEE",
+	QTUM: "QTUM",
+	USDT: "USDT",
+	DAO:  "XDAO",
+	ETC:  "XETC",
+	ICN:  "XICN",
+	MLN:  "XMLN",
+	NMC:  "XNMC",
+	XDG:  "XXDG",
+	XMR:  "XXMR",
+	XRP:  "XXRP",
+	XVN:  "XXVN",
+	ZEC:  "XZEC",
+	CAD:  "ZCAD",
+	EUR:  "ZEUR",
+	GBP:  "ZGBP",
+	JPY:  "ZJPY",
+	KRW:  "ZKRW",
+	SHX:  "SHX",
+})
+
+// StrongholdAssetConverterOpenOrders is the asset converter for the Stronghold exchange's GetOpenOrders API
+var StrongholdAssetConverterOpenOrders = makeAssetConverter(map[Asset]string{
+	XLM: "XLM",
+	BTC: "XBT",
+	USD: "USD",
+})
+
 
 // FromHorizonAsset is a factory method
 func FromHorizonAsset(hAsset horizon.Asset) Asset {

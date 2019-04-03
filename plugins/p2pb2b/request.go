@@ -153,7 +153,6 @@ type TickerPriceResponse struct {
 func recycleDockerProxy(path string, proxy *P2BProxy) error {
 	script := filepath.Join(path, "openvpn.sh")
 	// fmt.Println(script, proxy)
-
 	ovpn := filepath.Join(path, proxy.ovpn)
 	command := exec.Command("bash", script, proxy.location, ovpn, proxy.port)
 	// fmt.Println(proxy.location, ovpn, proxy.port)
