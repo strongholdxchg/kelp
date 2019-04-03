@@ -46,6 +46,7 @@ const (
 	JPY  Asset = "JPY"
 	KRW  Asset = "KRW"
 	OMG  Asset = "OMG"
+	SHX  Asset = "SHX"
 )
 
 // AssetConverter converts to and from the asset type, it is specific to an exchange
@@ -129,8 +130,17 @@ var Display = makeAssetConverter(map[Asset]string{
 	OMG:  string(OMG),
 })
 
-// CcxtAssetConverter is the asset converter for the CCXT exchange interface
+// P2PB2BAssetConverter is the ABRIDGED asset converter for the P2PB2B exchange interface
 var CcxtAssetConverter = Display
+
+// P2PB2BAssetConverter is the asset converter for the P2PB2B exchange interface
+var P2PB2BAssetConverter = makeAssetConverter(map[Asset]string{
+	XLM: string(XLM),
+	BTC: string(BTC),
+	USD: string(USD),
+	SHX: string(SHX),
+	ETH: string(ETH),
+})
 
 // KrakenAssetConverter is the asset converter for the Kraken exchange
 var KrakenAssetConverter = makeAssetConverter(map[Asset]string{
@@ -171,6 +181,55 @@ var KrakenAssetConverterOpenOrders = makeAssetConverter(map[Asset]string{
 	BTC: "XBT",
 	USD: "USD",
 })
+// StrongholdAssetConverter is the asset converter for the Stronghold exchange
+var StrongholdAssetConverter = makeAssetConverter(map[Asset]string{
+	XLM:  "XLM",
+	BTC:  "BTC",
+	USD:  "USD",
+	ETH:  "ETH",
+	LTC:  "LTC",
+	REP:  "XREP",
+	ADA:  "ADA",
+	BCH:  "BCH",
+	DASH: "DASH",
+	EOS:  "EOS",
+	GNO:  "GNO",
+	FEE:  "KFEE",
+	QTUM: "QTUM",
+	USDT: "USDT",
+	DAO:  "XDAO",
+	ETC:  "XETC",
+	ICN:  "XICN",
+	MLN:  "XMLN",
+	NMC:  "XNMC",
+	XDG:  "XXDG",
+	XMR:  "XXMR",
+	XRP:  "XXRP",
+	XVN:  "XXVN",
+	ZEC:  "XZEC",
+	CAD:  "ZCAD",
+	EUR:  "ZEUR",
+	GBP:  "ZGBP",
+	JPY:  "ZJPY",
+	KRW:  "ZKRW",
+	SHX:  "SHX",
+})
+
+// StrongholdAssetConverterOpenOrders is the asset converter for the Stronghold exchange's GetOpenOrders API
+var StrongholdAssetConverterOpenOrders = makeAssetConverter(map[Asset]string{
+	XLM: "XLM",
+	BTC: "XBT",
+	USD: "USD",
+})
+
+
+// FromHorizonAsset is a factory method
+func FromHorizonAsset(hAsset horizon.Asset) Asset {
+	if hAsset.Type == utils.Native {
+		return XLM
+	}
+	return Asset(hAsset.Code)
+}
 
 // FromHorizonAsset is a factory method
 func FromHorizonAsset(hAsset horizon.Asset) Asset {

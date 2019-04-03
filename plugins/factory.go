@@ -8,6 +8,7 @@ import (
 	"github.com/stellar/go/support/config"
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
+	"github.com/stellar/kelp/plugins/p2pb2b"
 	"github.com/stellar/kelp/support/sdk"
 	"github.com/stellar/kelp/support/utils"
 )
@@ -189,6 +190,24 @@ func loadExchanges() {
 			Tested:       true,
 			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
 				return makeKrakenExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
+			},
+		},
+		"p2pb2b": {
+			SortOrder: 5,
+			Description: "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
+			TradeEnabled: true,
+			Tested:       true,
+			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
+				return p2pb2b.MakeP2PB2BExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
+			},
+		},
+		"stronghold": {
+			SortOrder: 5,
+			Description: "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
+			TradeEnabled: false,
+			Tested:       false,
+			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
+				return makeStrongholdExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
 			},
 		},
 	}
