@@ -205,7 +205,7 @@ func loadExchanges() {
 			SortOrder: 5,
 			Description: "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
 			TradeEnabled: false,
-			Tested:       true,
+			Tested:       false,
 			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
 				return makeStrongholdExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
 			},
