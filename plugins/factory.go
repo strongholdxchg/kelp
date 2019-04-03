@@ -193,43 +193,51 @@ func loadExchanges() {
 			},
 		},
 		"p2pb2b": {
-			SortOrder:    5,
-			Description:  "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
+			SortOrder: 5,
+			Description: "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
 			TradeEnabled: true,
+			Tested:       true,
 			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
 				return p2pb2b.MakeP2PB2BExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
 			},
 		},
-		"my_exchange": {
-			SortOrder:    5,
-			Description:  "my own orderbook",
+		"stronghold": {
+			SortOrder: 5,
+			Description: "P2PB2B is an Estonian cryptocurrency exchange (https://p2pb2b.io/)",
 			TradeEnabled: false,
+			Tested:       true,
 			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
 				return makeStrongholdExchange(exchangeFactoryData.apiKeys, exchangeFactoryData.simMode)
 			},
 		},
 	}
 
-	// add all CCXT exchanges
-	sortOrderOffset := len(*exchanges)
-	for i, exchangeName := range sdk.GetExchangeList() {
-		key := fmt.Sprintf("ccxt-%s", exchangeName)
-		_, tested := testedCcxtExchanges[exchangeName]
-		boundExchangeName := exchangeName
+	// add all CCXT exchanges (tested exchanges first)
+	sortOrderIndex := len(*exchanges)
+	for _, t := range []bool{true, false} {
+		for _, exchangeName := range sdk.GetExchangeList() {
+			key := fmt.Sprintf("ccxt-%s", exchangeName)
+			_, tested := testedCcxtExchanges[exchangeName]
+			if tested != t {
+				continue
+			}
+			boundExchangeName := exchangeName
 
-		(*exchanges)[key] = ExchangeContainer{
-			SortOrder:    uint16(i + sortOrderOffset),
-			Description:  exchangeName + " is automatically added via ccxt-rest",
-			TradeEnabled: true,
-			Tested:       tested,
-			makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
-				return makeCcxtExchange(
-					boundExchangeName,
-					nil,
-					exchangeFactoryData.apiKeys,
-					exchangeFactoryData.simMode,
-				)
-			},
+			(*exchanges)[key] = ExchangeContainer{
+				SortOrder:    uint16(sortOrderIndex),
+				Description:  exchangeName + " is automatically added via ccxt-rest",
+				TradeEnabled: true,
+				Tested:       tested,
+				makeFn: func(exchangeFactoryData exchangeFactoryData) (api.Exchange, error) {
+					return makeCcxtExchange(
+						boundExchangeName,
+						nil,
+						exchangeFactoryData.apiKeys,
+						exchangeFactoryData.simMode,
+					)
+				},
+			}
+			sortOrderIndex++
 		}
 	}
 }

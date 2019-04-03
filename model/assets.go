@@ -230,3 +230,11 @@ func FromHorizonAsset(hAsset horizon.Asset) Asset {
 	}
 	return Asset(hAsset.Code)
 }
+
+// FromHorizonAsset is a factory method
+func FromHorizonAsset(hAsset horizon.Asset) Asset {
+	if hAsset.Type == utils.Native {
+		return XLM
+	}
+	return Asset(hAsset.Code)
+}
