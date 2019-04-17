@@ -12,7 +12,8 @@ go:
 
 before_install:
 - curl https://glide.sh/get | sh
-- docker run -p 3000:3000 -d franzsee/ccxt-rest
+- docker run -p 3000:3000 -d franzsee/ccxt-rest:v0.0.4
+- nvm install 10.5 && nvm use 10.5
 
 install:
 - glide install
@@ -20,4 +21,4 @@ install:
 script:
 - ./scripts/build.sh
 - ./bin/kelp version
-- go test --short ./...
+- go test -tags dev --short ./...

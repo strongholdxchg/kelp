@@ -7,6 +7,7 @@
 [![Godoc](https://godoc.org/github.com/stellar/kelp?status.svg)](https://godoc.org/github.com/stellar/kelp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/stellar/kelp)](https://goreportcard.com/report/github.com/stellar/kelp)
 [![Build Status](https://travis-ci.org/stellar/kelp.svg?branch=master)](https://travis-ci.org/stellar/kelp)
+[![Contributors](https://img.shields.io/github/contributors/stellar/kelp.svg)](https://github.com/stellar/kelp/graphs/contributors)
 
 Kelp is a free and open-source trading bot for the [Stellar universal marketplace][stellarx].
 
@@ -59,24 +60,24 @@ There is **one** binary associated with this project: `kelp`. Once the binary is
 
 You can find the pre-compiled binary for your platform from the [Github Releases Page][github-releases].
 
-Here is a list of binaries for the most recent release **v1.6.0**:
+Here is a list of binaries for the most recent release **v1.6.1**:
 
 | Platform       | Architecture | Binary File Name |
 | -------------- | ------------ | ---------------- |
-| MacOS (Darwin) | 64-bit       | [kelp-v1.6.0-darwin-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-darwin-amd64.tar) |
-| Windows        | 64-bit       | [kelp-v1.6.0-windows-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-windows-amd64.tar) |
-| Linux          | 64-bit       | [kelp-v1.6.0-linux-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-linux-amd64.tar) |
-| Linux          | 64-bit arm   | [kelp-v1.6.0-linux-arm64.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-linux-arm64.tar) |
-| Linux          | 32-bit arm5  | [kelp-v1.6.0-linux-arm5.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-linux-arm5.tar) |
-| Linux          | 32-bit arm6  | [kelp-v1.6.0-linux-arm6.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-linux-arm6.tar) |
-| Linux          | 32-bit arm7  | [kelp-v1.6.0-linux-arm7.tar](https://github.com/stellar/kelp/releases/download/v1.6.0/kelp-v1.6.0-linux-arm7.tar) |
+| MacOS (Darwin) | 64-bit       | [kelp-v1.6.1-darwin-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-darwin-amd64.tar) |
+| Windows        | 64-bit       | [kelp-v1.6.1-windows-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-windows-amd64.tar) |
+| Linux          | 64-bit       | [kelp-v1.6.1-linux-amd64.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-linux-amd64.tar) |
+| Linux          | 64-bit arm   | [kelp-v1.6.1-linux-arm64.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-linux-arm64.tar) |
+| Linux          | 32-bit arm5  | [kelp-v1.6.1-linux-arm5.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-linux-arm5.tar) |
+| Linux          | 32-bit arm6  | [kelp-v1.6.1-linux-arm6.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-linux-arm6.tar) |
+| Linux          | 32-bit arm7  | [kelp-v1.6.1-linux-arm7.tar](https://github.com/stellar/kelp/releases/download/v1.6.1/kelp-v1.6.1-linux-arm7.tar) |
 
-After you _untar_ the downloaded file, change to the generated directory (`kelp-v1.6.0`) and invoke the `kelp` binary.
+After you _untar_ the downloaded file, change to the generated directory (`kelp-v1.6.1`) and invoke the `kelp` binary.
 
 Here's an example to get you started (replace `filename` with the name of the file that you download):
 
     tar xvf filename
-    cd kelp-v1.6.0
+    cd kelp-v1.6.1
     ./kelp
 
 To run the bot in simulation mode, try this command:
@@ -119,6 +120,8 @@ The `trade` command has three required parameters which are:
 - **strategy**: the strategy you want to run (_sell_, _buysell_, _balanced_, _mirror_, _delete_).
 - **stratConf**: full path to the _.cfg_ file specific to your chosen strategy, [sample files here](examples/configs/trader/).
 
+Kelp sets the `X-App-Name` and `X-App-Version` headers on requests made to Horizon. These headers help us track overall Kelp usage, so that we can learn about general usage patterns and adapt Kelp to be more useful in the future. These can be turned off using the `--no-headers` flag. See `kelp trade --help` for more information.
+
 Here's an example of how to start the trading bot with the _buysell_ strategy:
 
 `kelp trade --botConf ./path/trader.cfg --strategy buysell --stratConf ./path/buysell.cfg`
@@ -129,7 +132,7 @@ If you are ever stuck, just run the `kelp` binary directly to bring up the help 
 
 You can use the [CCXT][ccxt] library via the [CCXT REST API Wrapper][ccxt-rest] to fetch prices and orderbooks from a larger number of exchanges.
 
-You will need to run the CCXT REST server on `localhost:3000` so Kelp can connect to it. In order to run CCXT you should install [docker][docker] (linux: `sudo apt install -y docker.io`) and run the CCXT-REST docker image configured to port `3000` (linux: `sudo docker run -p 3000:3000 -d franzsee/ccxt-rest`). You can find more details on the [CCXT_REST github page][ccxt-rest]. The CCXT-REST server **must** be running on port `3000` _before_ you start up the Kelp bot.
+You will need to run the CCXT REST server on `localhost:3000` so Kelp can connect to it. In order to run CCXT you should install [docker][docker] (linux: `sudo apt install -y docker.io`) and run the CCXT-REST docker image configured to port `3000` (linux: `sudo docker run -p 3000:3000 -d franzsee/ccxt-rest:v0.0.4`). You can find more details on the [CCXT_REST github page][ccxt-rest]. The CCXT-REST server **must** be running on port `3000` _before_ you start up the Kelp bot.
 
 You can list the exchanges (`./kelp exchanges`) to get the full list of supported exchanges via CCXT.
 
