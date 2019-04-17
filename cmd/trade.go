@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stellar/go/build"
 	"github.com/stellar/go/clients/horizon"
+	horizonclient "github.com/stellar/go/exp/clients/horizon"
 	"github.com/stellar/go/support/config"
 	"github.com/stellar/kelp/api"
 	"github.com/stellar/kelp/model"
@@ -21,12 +22,15 @@ import (
 	"github.com/stellar/kelp/support/logger"
 	"github.com/stellar/kelp/support/monitoring"
 	"github.com/stellar/kelp/support/networking"
+	"github.com/stellar/kelp/support/prefs"
 	"github.com/stellar/kelp/support/utils"
 	"github.com/stellar/kelp/trader"
 )
 
 const tradeExamples = `  kelp trade --botConf ./path/trader.cfg --strategy buysell --stratConf ./path/buysell.cfg
   kelp trade --botConf ./path/trader.cfg --strategy buysell --stratConf ./path/buysell.cfg --sim`
+
+const prefsFilename = "kelp.prefs"
 
 var tradeCmd = &cobra.Command{
 	Use:     "trade",
@@ -64,6 +68,7 @@ type inputs struct {
 	simMode                       *bool
 	logPrefix                     *string
 	fixedIterations               *uint64
+	noHeaders                     *bool
 }
 
 func validateCliParams(l logger.Logger, options inputs) {
@@ -88,8 +93,19 @@ func validateBotConfig(l logger.Logger, botConfig trader.BotConfig) {
 		logger.Fatal(l, fmt.Errorf("The `FEE` object needs to exist in the trader config file when trading on SDEX"))
 	}
 
-	if !botConfig.IsTradingSdex() && botConfig.MinCentralizedBaseVolume == 0.0 {
-		logger.Fatal(l, fmt.Errorf("need to specify non-zero MIN_CENTRALIZED_BASE_VOLUME config param in trader config file when not trading on SDEX"))
+	if !botConfig.IsTradingSdex() && botConfig.CentralizedMinBaseVolumeOverride != nil && *botConfig.CentralizedMinBaseVolumeOverride <= 0.0 {
+		logger.Fatal(l, fmt.Errorf("need to specify positive CENTRALIZED_MIN_BASE_VOLUME_OVERRIDE config param in trader config file when not trading on SDEX"))
+	}
+	if !botConfig.IsTradingSdex() && botConfig.CentralizedMinQuoteVolumeOverride != nil && *botConfig.CentralizedMinQuoteVolumeOverride <= 0.0 {
+		logger.Fatal(l, fmt.Errorf("need to specify positive CENTRALIZED_MIN_QUOTE_VOLUME_OVERRIDE config param in trader config file when not trading on SDEX"))
+	}
+	validatePrecisionConfig(l, botConfig.IsTradingSdex(), botConfig.CentralizedVolumePrecisionOverride, "CENTRALIZED_VOLUME_PRECISION_OVERRIDE")
+	validatePrecisionConfig(l, botConfig.IsTradingSdex(), botConfig.CentralizedPricePrecisionOverride, "CENTRALIZED_PRICE_PRECISION_OVERRIDE")
+}
+
+func validatePrecisionConfig(l logger.Logger, isTradingSdex bool, precisionField *int8, name string) {
+	if !isTradingSdex && precisionField != nil && *precisionField < 0 {
+		logger.Fatal(l, fmt.Errorf("need to specify non-negative %s config param in trader config file when not trading on SDEX", name))
 	}
 }
 
@@ -105,6 +121,7 @@ func init() {
 	options.simMode = tradeCmd.Flags().Bool("sim", false, "simulate the bot's actions without placing any trades")
 	options.logPrefix = tradeCmd.Flags().StringP("log", "l", "", "log to a file (and stdout) with this prefix for the filename")
 	options.fixedIterations = tradeCmd.Flags().Uint64("iter", 0, "only run the bot for the first N iterations (defaults value 0 runs unboundedly)")
+	options.noHeaders = tradeCmd.Flags().Bool("no-headers", false, "do not set X-App-Name and X-App-Version headers on requests to horizon")
 
 	requiredFlag("botConf")
 	requiredFlag("strategy")
@@ -125,16 +142,16 @@ func makeStartupMessage(options inputs) string {
 	return startupMessage
 }
 
-func makeFeeFn(l logger.Logger, botConfig trader.BotConfig) plugins.OpFeeStroops {
+func makeFeeFn(l logger.Logger, botConfig trader.BotConfig, newClient *horizonclient.Client) plugins.OpFeeStroops {
 	if !botConfig.IsTradingSdex() {
 		return plugins.SdexFixedFeeFn(0)
 	}
 
 	feeFn, e := plugins.SdexFeeFnFromStats(
-		botConfig.HorizonURL,
 		botConfig.Fee.CapacityTrigger,
 		botConfig.Fee.Percentile,
 		botConfig.Fee.MaxOpFeeStroops,
+		newClient,
 	)
 	if e != nil {
 		logger.Fatal(l, fmt.Errorf("could not set up feeFn correctly: %s", e))
@@ -171,6 +188,7 @@ func makeExchangeShimSdex(
 	botConfig trader.BotConfig,
 	options inputs,
 	client *horizon.Client,
+	newClient *horizonclient.Client,
 	ieif *plugins.IEIF,
 	network build.Network,
 	threadTracker *multithreading.ThreadTracker,
@@ -187,21 +205,64 @@ func makeExchangeShimSdex(
 			})
 		}
 
+		exchangeParams := []api.ExchangeParam{}
+		for _, param := range botConfig.ExchangeParams {
+			exchangeParams = append(exchangeParams, api.ExchangeParam{
+				Param: param.Param,
+				Value: param.Value,
+			})
+		}
+
+		exchangeHeaders := []api.ExchangeHeader{}
+		for _, header := range botConfig.ExchangeHeaders {
+			exchangeHeaders = append(exchangeHeaders, api.ExchangeHeader{
+				Header: header.Header,
+				Value:  header.Value,
+			})
+		}
+
 		var exchangeAPI api.Exchange
-		exchangeAPI, e = plugins.MakeTradingExchange(botConfig.TradingExchange, exchangeAPIKeys, *options.simMode)
+		exchangeAPI, e = plugins.MakeTradingExchange(botConfig.TradingExchange, exchangeAPIKeys, exchangeParams, exchangeHeaders, *options.simMode)
 		if e != nil {
 			logger.Fatal(l, fmt.Errorf("unable to make trading exchange: %s", e))
 			return nil, nil
 		}
 
 		exchangeShim = plugins.MakeBatchedExchange(exchangeAPI, *options.simMode, botConfig.AssetBase(), botConfig.AssetQuote(), botConfig.TradingAccount())
+
+		// update precision overrides
+		exchangeShim.OverrideOrderConstraints(tradingPair, model.MakeOrderConstraintsOverride(
+			botConfig.CentralizedPricePrecisionOverride,
+			botConfig.CentralizedVolumePrecisionOverride,
+			nil,
+			nil,
+		))
+		if botConfig.CentralizedMinBaseVolumeOverride != nil {
+			// use updated precision overrides to convert the minCentralizedBaseVolume to a model.Number
+			exchangeShim.OverrideOrderConstraints(tradingPair, model.MakeOrderConstraintsOverride(
+				nil,
+				nil,
+				model.NumberFromFloat(*botConfig.CentralizedMinBaseVolumeOverride, exchangeShim.GetOrderConstraints(tradingPair).VolumePrecision),
+				nil,
+			))
+		}
+		if botConfig.CentralizedMinQuoteVolumeOverride != nil {
+			// use updated precision overrides to convert the minCentralizedQuoteVolume to a model.Number
+			minQuoteVolume := model.NumberFromFloat(*botConfig.CentralizedMinQuoteVolumeOverride, exchangeShim.GetOrderConstraints(tradingPair).VolumePrecision)
+			exchangeShim.OverrideOrderConstraints(tradingPair, model.MakeOrderConstraintsOverride(
+				nil,
+				nil,
+				nil,
+				&minQuoteVolume,
+			))
+		}
 	}
 
 	sdexAssetMap := map[model.Asset]horizon.Asset{
 		tradingPair.Base:  botConfig.AssetBase(),
 		tradingPair.Quote: botConfig.AssetQuote(),
 	}
-	feeFn := makeFeeFn(l, botConfig)
+	feeFn := makeFeeFn(l, botConfig, newClient)
 	sdex := plugins.MakeSDEX(
 		client,
 		ieif,
@@ -287,17 +348,12 @@ func makeBot(
 	if e != nil {
 		l.Infof("Unable to set up monitoring for alert type '%s' with the given API key\n", botConfig.AlertType)
 	}
-	minCentralizedBaseVolume := &botConfig.MinCentralizedBaseVolume
-	if botConfig.IsTradingSdex() {
-		minCentralizedBaseVolume = nil
-	}
 	bot := trader.MakeBot(
 		client,
 		ieif,
 		botConfig.AssetBase(),
 		botConfig.AssetQuote(),
 		tradingPair,
-		minCentralizedBaseVolume,
 		botConfig.TradingAccount(),
 		sdex,
 		exchangeShim,
@@ -313,9 +369,22 @@ func makeBot(
 	return bot
 }
 
+func convertDeprecatedBotConfigValues(l logger.Logger, botConfig trader.BotConfig) trader.BotConfig {
+	if botConfig.CentralizedMinBaseVolumeOverride != nil && botConfig.MinCentralizedBaseVolumeDeprecated != nil {
+		l.Infof("deprecation warning: cannot set both '%s' (deprecated) and '%s' in the trader config, using value from '%s'\n", "MIN_CENTRALIZED_BASE_VOLUME", "CENTRALIZED_MIN_BASE_VOLUME_OVERRIDE", "CENTRALIZED_MIN_BASE_VOLUME_OVERRIDE")
+	} else if botConfig.MinCentralizedBaseVolumeDeprecated != nil {
+		l.Infof("deprecation warning: '%s' is deprecated, use the field '%s' in the trader config instead, see sample_trader.cfg as an example\n", "MIN_CENTRALIZED_BASE_VOLUME", "CENTRALIZED_MIN_BASE_VOLUME_OVERRIDE")
+	}
+	if botConfig.CentralizedMinBaseVolumeOverride == nil {
+		botConfig.CentralizedMinBaseVolumeOverride = botConfig.MinCentralizedBaseVolumeDeprecated
+	}
+	return botConfig
+}
+
 func runTradeCmd(options inputs) {
 	l := logger.MakeBasicLogger()
 	botConfig := readBotConfig(l, options)
+	botConfig = convertDeprecatedBotConfigValues(l, botConfig)
 	l.Infof("Trading %s:%s for %s:%s\n", botConfig.AssetCodeA, botConfig.IssuerA, botConfig.AssetCodeB, botConfig.IssuerB)
 
 	// --- start initialization of objects ----
@@ -331,6 +400,29 @@ func runTradeCmd(options inputs) {
 		URL:  botConfig.HorizonURL,
 		HTTP: http.DefaultClient,
 	}
+	newClient := &horizonclient.Client{
+		// TODO horizonclient.Client has a bug in it where it does not use "/" to separate the horizonURL from the fee_stats endpoint
+		HorizonURL: botConfig.HorizonURL + "/",
+		HTTP:       http.DefaultClient,
+	}
+	if !*options.noHeaders {
+		client.AppName = "kelp"
+		client.AppVersion = version
+		newClient.AppName = "kelp"
+		newClient.AppVersion = version
+
+		p := prefs.Make(prefsFilename)
+		if p.FirstTime() {
+			log.Printf("Kelp sets the `X-App-Name` and `X-App-Version` headers on requests made to Horizon. These headers help us track overall Kelp usage, so that we can learn about general usage patterns and adapt Kelp to be more useful in the future. These can be turned off using the `--no-headers` flag. See `kelp trade --help` for more information.\n")
+			e := p.SetNotFirstTime()
+			if e != nil {
+				l.Info("")
+				l.Errorf("unable to create preferences file: %s", e)
+				// we can still proceed with this error
+			}
+		}
+	}
+
 	ieif := plugins.MakeIEIF(botConfig.IsTradingSdex())
 	network := utils.ParseNetwork(botConfig.HorizonURL)
 	exchangeShim, sdex := makeExchangeShimSdex(
@@ -338,6 +430,7 @@ func runTradeCmd(options inputs) {
 		botConfig,
 		options,
 		client,
+		newClient,
 		ieif,
 		network,
 		threadTracker,
@@ -403,33 +496,35 @@ func runTradeCmd(options inputs) {
 }
 
 func startMonitoringServer(l logger.Logger, botConfig trader.BotConfig) error {
+	healthMetrics, e := monitoring.MakeMetricsRecorder(map[string]interface{}{"success": true})
+	if e != nil {
+		return fmt.Errorf("unable to make metrics recorder for the /health endpoint: %s", e)
+	}
+	healthEndpoint, e := monitoring.MakeMetricsEndpoint("/health", healthMetrics, networking.NoAuth)
+	if e != nil {
+		return fmt.Errorf("unable to make /health endpoint: %s", e)
+	}
+
+	kelpMetrics, e := monitoring.MakeMetricsRecorder(nil)
+	if e != nil {
+		return fmt.Errorf("unable to make metrics recorder for the /metrics endpoint: %s", e)
+	}
+	metricsAuth := networking.NoAuth
+	if botConfig.GoogleClientID != "" || botConfig.GoogleClientSecret != "" {
+		metricsAuth = networking.GoogleAuth
+	}
+	metricsEndpoint, e := monitoring.MakeMetricsEndpoint("/metrics", kelpMetrics, metricsAuth)
+	if e != nil {
+		return fmt.Errorf("unable to make /metrics endpoint: %s", e)
+	}
+
 	serverConfig := &networking.Config{
 		GoogleClientID:     botConfig.GoogleClientID,
 		GoogleClientSecret: botConfig.GoogleClientSecret,
 		PermittedEmails:    map[string]bool{},
 	}
-	// Load acceptable Google emails into the map
 	for _, email := range strings.Split(botConfig.AcceptableEmails, ",") {
 		serverConfig.PermittedEmails[email] = true
-	}
-
-	healthMetrics, e := monitoring.MakeMetricsRecorder(map[string]interface{}{"success": true})
-	if e != nil {
-		return fmt.Errorf("unable to make metrics recorder for the health endpoint: %s", e)
-	}
-
-	healthEndpoint, e := monitoring.MakeMetricsEndpoint("/health", healthMetrics, networking.NoAuth)
-	if e != nil {
-		return fmt.Errorf("unable to make /health endpoint: %s", e)
-	}
-	kelpMetrics, e := monitoring.MakeMetricsRecorder(nil)
-	if e != nil {
-		return fmt.Errorf("unable to make metrics recorder for the /metrics endpoint: %s", e)
-	}
-
-	metricsEndpoint, e := monitoring.MakeMetricsEndpoint("/metrics", kelpMetrics, networking.GoogleAuth)
-	if e != nil {
-		return fmt.Errorf("unable to make /metrics endpoint: %s", e)
 	}
 	server, e := networking.MakeServer(serverConfig, []networking.Endpoint{healthEndpoint, metricsEndpoint})
 	if e != nil {

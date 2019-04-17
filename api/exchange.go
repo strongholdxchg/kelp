@@ -14,6 +14,18 @@ type ExchangeAPIKey struct {
 	Secret string
 }
 
+// ExchangeParam specifies an additional parameter to be sent when initializing the exchange
+type ExchangeParam struct {
+	Param string
+	Value string
+}
+
+// ExchangeHeader specifies additional HTTP headers
+type ExchangeHeader struct {
+	Header string
+	Value  string
+}
+
 // Account allows you to access key account functions
 type Account interface {
 	GetAccountBalances(assetList []interface{}) (map[interface{}]model.Number, error)
@@ -73,6 +85,8 @@ type FillTrackable interface {
 type Constrainable interface {
 	// return nil if the constraint does not exist for the exchange
 	GetOrderConstraints(pair *model.TradingPair) *model.OrderConstraints
+
+	OverrideOrderConstraints(pair *model.TradingPair, override *model.OrderConstraintsOverride)
 }
 
 // OrderbookFetcher extracts out the method that should go into ExchangeShim for now
